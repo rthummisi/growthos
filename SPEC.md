@@ -174,6 +174,51 @@ GrowthOS is an AI agent swarm that figures out where your product should exist a
 | 106 | Viral Alert UI (notification panel, rapid-response content queue when something spikes) | P1 | Medium |
 | 107 | Launch Sequence Planner UI (drag-and-drop multi-channel launch timeline) | P1 | High |
 
+### SECTION 11B — Frontend Design & UX Components
+
+#### Data Visualization
+
+| # | Task | Priority | Complexity |
+|---|------|----------|------------|
+| 108A | Channel ROI ranker component — ranked list with live trend lines per channel, re-sorts on metrics refresh | P0 | Medium |
+| 108B | Full-funnel conversion chart — channel → click → signup → activation → retention, per-channel drilldown | P1 | High |
+| 108C | Competitor gap heatmap — you vs competitors across all 19 channels, color-coded presence intensity | P0 | Medium |
+| 108D | Content calendar arc view — awareness → consideration → conversion timeline, visual campaign arc | P1 | Medium |
+| 108E | Viral moment spike graph — real-time engagement spike visualization per post, threshold markers | P1 | Medium |
+
+#### Approval & Review Interaction Patterns
+
+| # | Task | Priority | Complexity |
+|---|------|----------|------------|
+| 108F | Approval card component — structured card with approve / modify / reject / defer actions, inline asset preview panel | P0 | High |
+| 108G | Bulk approval action bar — select-all, batch approve/reject with confirmation dialog, undo window | P0 | Medium |
+| 108H | Asset variation switcher — cycle through N versions of same asset, diff highlighting between versions | P1 | Medium |
+
+#### Live & Real-Time UX
+
+| # | Task | Priority | Complexity |
+|---|------|----------|------------|
+| 108I | "In the Wild" live feed component — scrolling feed with channel badge, match reason, one-click draft reply | P0 | High |
+| 108J | Viral alert notification panel — spike detection badge in nav, rapid-response content queue drawer | P1 | Medium |
+| 108K | Agent swarm run progress view — live per-agent status with streaming output log, completion estimate | P0 | High |
+| 108L | On-demand metrics refresh UX — per-channel pull-to-refresh trigger, last-updated timestamp, loading skeleton | P0 | Low |
+
+#### Forms & Configuration UX
+
+| # | Task | Priority | Complexity |
+|---|------|----------|------------|
+| 108M | Brand voice config UI — tone/style/vocabulary with sliders, preset profiles (technical, casual, founder), live copy preview | P0 | Medium |
+| 108N | Product intake multi-step wizard — URL → GitHub → description → brand config → confirmation, progress indicator | P0 | Medium |
+| 108O | Per-channel cadence configurator — daily/twice-daily toggle per channel, next-run preview, bulk-set option | P0 | Low |
+
+#### Navigation & Global Layout
+
+| # | Task | Priority | Complexity |
+|---|------|----------|------------|
+| 108P | Drag-and-drop launch timeline — multi-channel launch planner, time-window snapping, conflict detection | P1 | High |
+| 108Q | Global approval badge — persistent pending-approval count in nav, animates on new items | P0 | Low |
+| 108R | Channel presence status indicators — per-channel visual state (active / pending / not present / needs attention) across all views | P0 | Low |
+
 ### SECTION 12 — Integrations
 
 | # | Task | Priority | Complexity |
@@ -210,10 +255,12 @@ GrowthOS is an AI agent swarm that figures out where your product should exist a
 
 | Priority | Count |
 |----------|-------|
-| P0 — MVP Critical | 58 |
-| P1 — Full Feature Set | 52 |
-| P2 — Post-Launch | 17 |
-| **Total** | **127** |
+| P0 — MVP Critical | 68 |
+| P1 — Full Feature Set | 59 |
+| P2 — Post-Launch | 18 |
+| **Total** | **145** |
+
+_18 frontend design & UX component tasks added in Section 11B (108A–108R)_
 
 ---
 
