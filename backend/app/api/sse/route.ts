@@ -10,28 +10,43 @@ function event(payload: SSEEvent) {
 }
 
 export async function GET() {
+  let closed = false;
+  let interval: ReturnType<typeof globalThis.setInterval> | undefined;
+  let unsubscribe: (() => void) | undefined;
+
   const stream = new ReadableStream({
     start(controller) {
-      controller.enqueue(
-        event({
-          type: "agent:start",
-          agentName: "growthos",
-          payload: { status: "connected" },
-          timestamp: new Date().toISOString()
-        })
-      );
-      const unsubscribe = subscribeToEvents((payload) => {
-        controller.enqueue(event(payload));
+      const safeEnqueue = (payload: SSEEvent) => {
+        if (closed) return;
+        try {
+          controller.enqueue(event(payload));
+        } catch {
+          closed = true;
+        }
+      };
+
+      safeEnqueue({
+        type: "agent:start",
+        agentName: "growthos",
+        payload: { status: "connected" },
+        timestamp: new Date().toISOString()
       });
-      const interval = globalThis.setInterval(() => {
+
+      unsubscribe = subscribeToEvents(safeEnqueue);
+
+      interval = globalThis.setInterval(() => {
+        if (closed) {
+          clearInterval(interval);
+          return;
+        }
         publishEvent({ type: "queue:update", payload: { pending: 0 } });
       }, 15_000);
-      return () => {
-        unsubscribe();
-        clearInterval(interval);
-      };
     },
-    cancel() {}
+    cancel() {
+      closed = true;
+      unsubscribe?.();
+      clearInterval(interval);
+    }
   });
 
   return new Response(stream, {
