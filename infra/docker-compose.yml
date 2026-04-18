@@ -6,21 +6,21 @@ services:
       POSTGRES_USER: growthos
       POSTGRES_PASSWORD: growthos
     ports:
-      - "5432:5432"
+      - "55432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
 
   redis:
     image: redis:7
     ports:
-      - "6379:6379"
+      - "56379:6379"
 
   minio:
     image: minio/minio
     command: server /data --console-address ":9001"
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "59000:9000"
+      - "59001:9001"
     environment:
       MINIO_ROOT_USER: growthos
       MINIO_ROOT_PASSWORD: growthos
