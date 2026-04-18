@@ -35,12 +35,12 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # ── Self-register as global command ───────────────────────────────────────────
-SYMLINK="/usr/local/bin/growthos"
+SYMLINK="/usr/local/bin/growthos-start"
 if [[ ! -L "$SYMLINK" ]] || [[ "$(readlink "$SYMLINK")" != "$ROOT/growthos.sh" ]]; then
-  echo -e "${CYAN}  →${RESET} Registering 'growthos' as a global command..."
+  echo -e "${CYAN}  →${RESET} Registering 'growthos-start' as a global command..."
   ln -sf "$ROOT/growthos.sh" "$SYMLINK" 2>/dev/null || \
     sudo ln -sf "$ROOT/growthos.sh" "$SYMLINK"
-  success "You can now run 'growthos' from anywhere"
+  success "You can now run 'growthos-start' from anywhere"
 fi
 
 # ── Banner ─────────────────────────────────────────────────────────────────────
