@@ -5,6 +5,15 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="$ROOT/.logs"
 mkdir -p "$LOG_DIR"
 
+# ── Self-register as global command ───────────────────────────────────────────
+SYMLINK="/usr/local/bin/growthos"
+if [[ ! -L "$SYMLINK" ]] || [[ "$(readlink "$SYMLINK")" != "$ROOT/growthos.sh" ]]; then
+  echo -e "\033[0;36m  →\033[0m Registering 'growthos' as a global command..."
+  ln -sf "$ROOT/growthos.sh" "$SYMLINK" 2>/dev/null || \
+    sudo ln -sf "$ROOT/growthos.sh" "$SYMLINK"
+  echo -e "\033[0;32m  ✓\033[0m You can now run 'growthos' from anywhere"
+fi
+
 # ── Colours ────────────────────────────────────────────────────────────────────
 BOLD="\033[1m"
 GREEN="\033[0;32m"
