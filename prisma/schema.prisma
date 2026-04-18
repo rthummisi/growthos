@@ -1,0 +1,210 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String               @id @default(cuid())
+  email     String               @unique
+  name      String?
+  createdAt DateTime             @default(now())
+  orgs      OrganizationMember[]
+}
+
+model Organization {
+  id        String               @id @default(cuid())
+  name      String
+  createdAt DateTime             @default(now())
+  members   OrganizationMember[]
+  projects  Project[]
+}
+
+model OrganizationMember {
+  id     String       @id @default(cuid())
+  userId String
+  orgId  String
+  role   String       @default("member")
+  user   User         @relation(fields: [userId], references: [id])
+  org    Organization @relation(fields: [orgId], references: [id])
+}
+
+model Project {
+  id        String    @id @default(cuid())
+  orgId     String
+  name      String
+  createdAt DateTime  @default(now())
+  org       Organization @relation(fields: [orgId], references: [id])
+  products  Product[]
+}
+
+model Product {
+  id            String                @id @default(cuid())
+  projectId     String
+  url           String
+  githubUrl     String?
+  description   String
+  icp           String?
+  plgWedge      String?
+  useCases      Json?
+  whyDevsShare  String?
+  brandVoiceId  String?
+  createdAt     DateTime              @default(now())
+  project       Project               @relation(fields: [projectId], references: [id])
+  brandVoice    BrandVoice?           @relation(fields: [brandVoiceId], references: [id])
+  suggestions   PlacementSuggestion[]
+  competitors   Competitor[]
+  metrics       PerformanceMetric[]
+  calendar      ContentCalendar[]
+  utmLinks      UtmTracking[]
+}
+
+model BrandVoice {
+  id         String    @id @default(cuid())
+  tone       String
+  style      String
+  vocabulary Json
+  preset     String?
+  createdAt  DateTime  @default(now())
+  products   Product[]
+}
+
+model Channel {
+  id          String                @id @default(cuid())
+  name        String                @unique
+  slug        String                @unique
+  cadence     String                @default("daily")
+  active      Boolean               @default(true)
+  lastRunAt   DateTime?
+  suggestions PlacementSuggestion[]
+  metrics     PerformanceMetric[]
+}
+
+model PlacementSuggestion {
+  id            String              @id @default(cuid())
+  productId     String
+  channelId     String
+  type          String
+  title         String
+  body          String
+  reasoning     String
+  viralityScore Int
+  effortScore   Int
+  audienceFit   Int
+  timeToValue   Int
+  status        String              @default("pending")
+  expiresAt     DateTime?
+  createdAt     DateTime            @default(now())
+  product       Product             @relation(fields: [productId], references: [id])
+  channel       Channel             @relation(fields: [channelId], references: [id])
+  versions      SuggestionVersion[]
+  approvals     Approval[]
+  assets        Asset[]
+  utmLinks      UtmTracking[]
+}
+
+model SuggestionVersion {
+  id           String              @id @default(cuid())
+  suggestionId String
+  body         String
+  changedBy    String
+  changedAt    DateTime            @default(now())
+  suggestion   PlacementSuggestion @relation(fields: [suggestionId], references: [id])
+}
+
+model Approval {
+  id           String              @id @default(cuid())
+  suggestionId String
+  decision     String
+  modifiedBody String?
+  reason       String?
+  decidedAt    DateTime            @default(now())
+  suggestion   PlacementSuggestion @relation(fields: [suggestionId], references: [id])
+}
+
+model ExecutionTask {
+  id           String   @id @default(cuid())
+  suggestionId String
+  status       String   @default("queued")
+  artifacts    Json?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  errorMsg     String?
+  createdAt    DateTime @default(now())
+}
+
+model Asset {
+  id           String              @id @default(cuid())
+  suggestionId String
+  type         String
+  title        String
+  content      String
+  variationOf  String?
+  storageKey   String?
+  createdAt    DateTime            @default(now())
+  suggestion   PlacementSuggestion @relation(fields: [suggestionId], references: [id])
+}
+
+model PerformanceMetric {
+  id          String   @id @default(cuid())
+  productId   String
+  channelId   String
+  metricKey   String
+  metricValue Float
+  rawData     Json?
+  fetchedAt   DateTime @default(now())
+  product     Product  @relation(fields: [productId], references: [id])
+  channel     Channel  @relation(fields: [channelId], references: [id])
+}
+
+model Competitor {
+  id        String   @id @default(cuid())
+  productId String
+  name      String
+  url       String
+  presence  Json
+  gaps      Json?
+  scannedAt DateTime @default(now())
+  product   Product  @relation(fields: [productId], references: [id])
+}
+
+model ContentCalendar {
+  id           String   @id @default(cuid())
+  productId    String
+  channelSlug  String
+  phase        String
+  scheduledAt  DateTime
+  status       String   @default("scheduled")
+  suggestionId String?
+  product      Product  @relation(fields: [productId], references: [id])
+}
+
+model UtmTracking {
+  id           String               @id @default(cuid())
+  productId    String
+  suggestionId String?
+  channelSlug  String
+  utmSource    String
+  utmMedium    String
+  utmCampaign  String
+  utmContent   String?
+  clicks       Int                  @default(0)
+  signups      Int                  @default(0)
+  activations  Int                  @default(0)
+  createdAt    DateTime             @default(now())
+  product      Product              @relation(fields: [productId], references: [id])
+  suggestion   PlacementSuggestion? @relation(fields: [suggestionId], references: [id])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actor      String
+  action     String
+  entityId   String?
+  entityType String?
+  payload    Json?
+  createdAt  DateTime @default(now())
+}
