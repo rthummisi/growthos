@@ -4,24 +4,29 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { TOUR_STEPS } from "./tourSteps";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:4011/api";
+
 interface ProductTourProps {
   activeStep: string | null;
   onStart: () => void;
   onEnd: () => void;
 }
 
-function pickVoice(): SpeechSynthesisVoice | null {
-  const voices = window.speechSynthesis.getVoices();
-  if (!voices.length) return null;
-  return (
-    voices.find((v) => v.name === "Samantha") ??
-    voices.find((v) => v.name === "Google US English") ??
-    voices.find((v) => v.name.includes("Google") && v.lang.startsWith("en")) ??
-    voices.find((v) => v.lang.startsWith("en-US") && v.localService) ??
-    voices.find((v) => v.lang.startsWith("en-US")) ??
-    voices.find((v) => v.lang.startsWith("en")) ??
-    null
-  );
+// Fetch narration audio from the backend edge-tts endpoint and return a blob URL.
+// Returns null on failure (caller falls back to silence + dwell only).
+async function fetchAudio(text: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${API_BASE}/demo/speak`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+  } catch {
+    return null;
+  }
 }
 
 export function ProductTour({ activeStep, onStart, onEnd }: ProductTourProps) {
@@ -32,22 +37,24 @@ export function ProductTour({ activeStep, onStart, onEnd }: ProductTourProps) {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isDone, setIsDone] = useState(false);
 
-  // genRef: incremented on every step change / cancel — stale callbacks bail out early
+  // genRef: incremented on every step change / cancel — stale callbacks bail early
   const genRef = useRef(0);
   const speechDoneRef = useRef(false);
   const dwellDoneRef = useRef(false);
   const dwellTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Pre-warm the voice list. Chrome returns [] on first call; voiceschanged fires ~100ms later.
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.speechSynthesis) return;
-    const load = () => { window.speechSynthesis.getVoices(); }; // side-effect: caches internally
-    load();
-    window.speechSynthesis.addEventListener("voiceschanged", load);
-    return () => window.speechSynthesis.removeEventListener("voiceschanged", load);
+  const stopAudio = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      const src = audioRef.current.src;
+      audioRef.current.src = "";
+      audioRef.current = null;
+      if (src.startsWith("blob:")) URL.revokeObjectURL(src);
+    }
   }, []);
 
-  // Advance only when both speech AND minimum dwell have finished for this generation
+  // Advance only when both audio AND minimum dwell have finished for this generation
   const tryAdvance = useCallback((gen: number) => {
     if (gen !== genRef.current) return;
     if (!speechDoneRef.current || !dwellDoneRef.current) return;
@@ -71,10 +78,11 @@ export function ProductTour({ activeStep, onStart, onEnd }: ProductTourProps) {
     dwellDoneRef.current = false;
     setIsDone(false);
     setIsSpeaking(false);
+    stopAudio();
 
     router.push(step.page);
 
-    // Minimum dwell — card stays visible for at least step.dwellMs
+    // Minimum dwell timer — card stays visible for at least step.dwellMs
     if (dwellTimerRef.current) clearTimeout(dwellTimerRef.current);
     dwellTimerRef.current = setTimeout(() => {
       if (gen !== genRef.current) return;
@@ -82,54 +90,43 @@ export function ProductTour({ activeStep, onStart, onEnd }: ProductTourProps) {
       tryAdvance(gen);
     }, step.dwellMs);
 
-    // Wait 300ms for navigation to settle, then speak
-    const navDelay = setTimeout(() => {
-      if (gen !== genRef.current) return;
-      if (!window.speechSynthesis) {
+    // Fetch audio after 300ms (let navigation settle), then play
+    let cancelled = false;
+    const navDelay = setTimeout(async () => {
+      if (gen !== genRef.current || cancelled) return;
+
+      const blobUrl = await fetchAudio(step.narration);
+
+      if (gen !== genRef.current || cancelled) {
+        if (blobUrl) URL.revokeObjectURL(blobUrl);
+        return;
+      }
+
+      if (!blobUrl) {
+        // Edge-tts unavailable — skip audio, dwell only
         speechDoneRef.current = true;
         tryAdvance(gen);
         return;
       }
 
-      // Cancel any in-progress speech, then wait one tick before queuing the new utterance.
-      // Chrome drops the voice assignment if cancel() and speak() happen in the same tick.
-      window.speechSynthesis.cancel();
+      const audio = new Audio(blobUrl);
+      audioRef.current = audio;
+      setIsSpeaking(true);
 
-      const speakDelay = setTimeout(() => {
+      const done = () => {
         if (gen !== genRef.current) return;
+        setIsSpeaking(false);
+        speechDoneRef.current = true;
+        tryAdvance(gen);
+      };
 
-        const utt = new SpeechSynthesisUtterance(step.narration);
-        utt.rate = 0.92;
-        utt.pitch = 1.0;
-        utt.volume = 1;
-
-        const voice = pickVoice();
-        if (voice) utt.voice = voice;
-
-        setIsSpeaking(true);
-
-        utt.onend = () => {
-          if (gen !== genRef.current) return;
-          setIsSpeaking(false);
-          speechDoneRef.current = true;
-          tryAdvance(gen);
-        };
-        utt.onerror = (e) => {
-          if (gen !== genRef.current) return;
-          // "interrupted" = we cancelled intentionally — do not treat as completion
-          if ((e as SpeechSynthesisErrorEvent).error === "interrupted") return;
-          setIsSpeaking(false);
-          speechDoneRef.current = true;
-          tryAdvance(gen);
-        };
-
-        window.speechSynthesis.speak(utt);
-      }, 0); // 0ms: just flush the cancel before queuing
-
-      return () => clearTimeout(speakDelay);
+      audio.onended = done;
+      audio.onerror = done;
+      audio.play().catch(done);
     }, 300);
 
     return () => {
+      cancelled = true;
       clearTimeout(navDelay);
       if (dwellTimerRef.current) clearTimeout(dwellTimerRef.current);
     };
@@ -137,14 +134,14 @@ export function ProductTour({ activeStep, onStart, onEnd }: ProductTourProps) {
 
   const endTour = useCallback(() => {
     genRef.current++;
-    window.speechSynthesis?.cancel();
+    stopAudio();
     if (dwellTimerRef.current) clearTimeout(dwellTimerRef.current);
     setIsActive(false);
     setStepIndex(0);
     setIsDone(false);
     setIsSpeaking(false);
     onEnd();
-  }, [onEnd]);
+  }, [onEnd, stopAudio]);
 
   const startTour = () => {
     genRef.current++;
@@ -157,14 +154,14 @@ export function ProductTour({ activeStep, onStart, onEnd }: ProductTourProps) {
 
   const prev = () => {
     genRef.current++;
-    window.speechSynthesis?.cancel();
+    stopAudio();
     if (dwellTimerRef.current) clearTimeout(dwellTimerRef.current);
     setStepIndex((i) => Math.max(0, i - 1));
   };
 
   const next = () => {
     genRef.current++;
-    window.speechSynthesis?.cancel();
+    stopAudio();
     if (dwellTimerRef.current) clearTimeout(dwellTimerRef.current);
     if (stepIndex >= TOUR_STEPS.length - 1) {
       endTour();
@@ -174,10 +171,11 @@ export function ProductTour({ activeStep, onStart, onEnd }: ProductTourProps) {
   };
 
   const togglePause = () => {
+    if (!audioRef.current) return;
     if (isPaused) {
-      window.speechSynthesis?.resume();
+      audioRef.current.play().catch(() => {});
     } else {
-      window.speechSynthesis?.pause();
+      audioRef.current.pause();
     }
     setIsPaused((p) => !p);
   };
