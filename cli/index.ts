@@ -6,6 +6,7 @@ import { metricsCommand } from "./commands/metrics";
 import { statusCommand } from "./commands/status";
 import { scheduleCommand } from "./commands/schedule";
 import { alertsCommand } from "./commands/alerts";
+import { demoCommand } from "./commands/demo";
 
 const program = new Command();
 
@@ -34,5 +35,14 @@ program
   );
 
 program.command("alerts").action(alertsCommand);
+
+program
+  .command("demo")
+  .requiredOption("--url <localUrl>", "Local URL of your running product (e.g. http://localhost:3000)")
+  .requiredOption("--description <description>", "One-sentence product description")
+  .option("--output-dir <outputDir>", "Directory to save MP4, GIF, and frames")
+  .action(async (options: { url: string; description: string; outputDir?: string }) =>
+    demoCommand(options.url, options.description, options.outputDir)
+  );
 
 program.parseAsync(process.argv);
