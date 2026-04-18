@@ -208,3 +208,28 @@ model AuditLog {
   payload    Json?
   createdAt  DateTime @default(now())
 }
+
+model WildMatch {
+  id          String   @id @default(cuid())
+  productId   String
+  source      String
+  url         String
+  title       String
+  matchReason String
+  draftReply  String
+  fetchedAt   DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@index([productId, fetchedAt])
+}
+
+model MarketSignal {
+  id         String   @id @default(cuid())
+  productId  String
+  insight    String
+  priority   String
+  suggestion String
+  generatedAt DateTime @default(now())
+
+  @@index([productId, generatedAt])
+}
