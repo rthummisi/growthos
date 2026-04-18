@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
     "Reddit",
     "DEV.to",
     "Lobsters",
-    process.env.BRAVE_SEARCH_API_KEY ? "Web (Brave)" : null
+    process.env.TAVILY_API_KEY ? "Web (Tavily)" : null
   ].filter(Boolean);
 
   return json({ matches, signals, lastScan, activeSources });

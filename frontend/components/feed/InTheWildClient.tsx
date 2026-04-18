@@ -147,7 +147,7 @@ export function InTheWildClient() {
         {scanning && (
           <div className="mt-3 rounded-lg bg-zinc-800/50 px-4 py-3 text-sm text-zinc-400">
             Searching GitHub, Hacker News, Stack Overflow, Reddit, DEV.to, Lobsters
-            {process.env.NEXT_PUBLIC_BRAVE_ENABLED === "1" ? ", and the web" : ""} for conversations where your product is the answer, then running market signal analysis…
+            {""} for conversations where your product is the answer, then running market signal analysis…
             <span className="ml-2 text-zinc-500">~20–30s</span>
           </div>
         )}

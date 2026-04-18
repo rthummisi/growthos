@@ -153,25 +153,33 @@ async function searchLobsters(query: string): Promise<RawResult[]> {
   } catch { return []; }
 }
 
-async function searchBrave(query: string): Promise<RawResult[]> {
-  const key = process.env.BRAVE_SEARCH_API_KEY;
+async function searchTavily(query: string): Promise<RawResult[]> {
+  const key = process.env.TAVILY_API_KEY;
   if (!key) return [];
   try {
-    const q = encodeURIComponent(`${query} site:reddit.com OR site:dev.to OR site:news.ycombinator.com OR site:stackoverflow.com OR site:github.com`);
-    const res = await fetch(
-      `https://api.search.brave.com/res/v1/web/search?q=${q}&count=10&freshness=py`,
-      {
-        headers: { "X-Subscription-Token": key, Accept: "application/json" },
-        signal: AbortSignal.timeout(10_000)
-      }
-    );
+    const res = await fetch("https://api.tavily.com/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        api_key: key,
+        query: `${query} developer tool`,
+        search_depth: "basic",
+        max_results: 10,
+        include_domains: [
+          "reddit.com", "news.ycombinator.com", "stackoverflow.com",
+          "github.com", "dev.to", "lobste.rs", "indiehackers.com",
+          "hashnode.com", "medium.com"
+        ]
+      }),
+      signal: AbortSignal.timeout(12_000)
+    });
     if (!res.ok) return [];
-    const data = (await res.json()) as { web?: { results?: { title: string; url: string; description?: string }[] } };
-    return (data.web?.results ?? []).map((r) => ({
+    const data = (await res.json()) as { results?: { title: string; url: string; content?: string }[] };
+    return (data.results ?? []).map((r) => ({
       source: "Web",
       title: r.title,
       url: r.url,
-      snippet: r.description
+      snippet: r.content?.slice(0, 200)
     }));
   } catch { return []; }
 }
@@ -228,17 +236,17 @@ export class InTheWildAgent extends BaseAgent<
     const secondaryQuery = keywords.slice(3).join(" OR ") || primaryQuery;
 
     // Step 2: fan out to all sources in parallel
-    const [github, hn, so, reddit, devto, lobsters, brave] = await Promise.all([
+    const [github, hn, so, reddit, devto, lobsters, tavily] = await Promise.all([
       searchGitHub(primaryQuery),
       searchHackerNews(primaryQuery),
       searchStackOverflow(primaryQuery),
       searchReddit(secondaryQuery),
       searchDevTo(keywords),
       searchLobsters(primaryQuery),
-      searchBrave(primaryQuery)
+      searchTavily(primaryQuery)
     ]);
 
-    const allResults = [...github, ...hn, ...so, ...reddit, ...devto, ...lobsters, ...brave];
+    const allResults = [...github, ...hn, ...so, ...reddit, ...devto, ...lobsters, ...tavily];
 
     // Step 3: build context for Claude (cap at 40 results to stay within tokens)
     const deduplicated = allResults.filter(
@@ -252,7 +260,7 @@ export class InTheWildAgent extends BaseAgent<
       reddit.length && `Reddit (${reddit.length})`,
       devto.length && `DEV.to (${devto.length})`,
       lobsters.length && `Lobsters (${lobsters.length})`,
-      brave.length && `Web/Brave (${brave.length})`
+      tavily.length && `Web/Tavily (${tavily.length})`
     ].filter(Boolean).join(", ");
 
     const foundItems = deduplicated.length
