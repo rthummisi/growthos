@@ -36,7 +36,7 @@ export class DemoGenerationAgent extends BaseAgent<DemoInput, DemoOutput> {
     const mp4 = path.join(workDir, "demo.mp4");
     const gif = path.join(workDir, "demo.gif");
 
-    console.log("→ Synthesising narration with macOS say...");
+    console.log("→ Synthesising narration with edge-tts (Aria + Andrew neural voices)...");
     console.log("→ Stitching video with ffmpeg...");
     const { mp4: mp4Out, gif: gifOut } = await buildVideo(frames, workDir, mp4, gif);
 

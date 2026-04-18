@@ -26,6 +26,7 @@ const SYSTEM = `You are a product demo scriptwriter. Given a product description
 - Shows the core value prop in the first 15 seconds
 - Has 6-10 steps — no more
 - Each narration line is one clear sentence, max 12 words, spoken naturally
+- Alternates perspective: even steps narrated by Aria (female presenter), odd steps by Andrew (male presenter)
 - Focuses on outcomes, not UI mechanics ("Watch it find the best channels" not "Click the button")
 - Ends with a call to action
 
