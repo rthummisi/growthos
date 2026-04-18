@@ -10,6 +10,20 @@ interface ProductTourProps {
   onEnd: () => void;
 }
 
+function pickVoice(): SpeechSynthesisVoice | null {
+  const voices = window.speechSynthesis.getVoices();
+  if (!voices.length) return null;
+  return (
+    voices.find((v) => v.name === "Samantha") ??
+    voices.find((v) => v.name === "Google US English") ??
+    voices.find((v) => v.name.includes("Google") && v.lang.startsWith("en")) ??
+    voices.find((v) => v.lang.startsWith("en-US") && v.localService) ??
+    voices.find((v) => v.lang.startsWith("en-US")) ??
+    voices.find((v) => v.lang.startsWith("en")) ??
+    null
+  );
+}
+
 export function ProductTour({ activeStep, onStart, onEnd }: ProductTourProps) {
   const router = useRouter();
   const [stepIndex, setStepIndex] = useState(0);
@@ -18,23 +32,22 @@ export function ProductTour({ activeStep, onStart, onEnd }: ProductTourProps) {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isDone, setIsDone] = useState(false);
 
-  // Refs that don't cause re-renders
-  const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
-  const genRef = useRef(0);         // incremented on every step change / cancel — stale callbacks bail out
+  // genRef: incremented on every step change / cancel — stale callbacks bail out early
+  const genRef = useRef(0);
   const speechDoneRef = useRef(false);
   const dwellDoneRef = useRef(false);
   const dwellTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Load voices asynchronously — Chrome returns empty array on first call
+  // Pre-warm the voice list. Chrome returns [] on first call; voiceschanged fires ~100ms later.
   useEffect(() => {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
-    const load = () => { voicesRef.current = window.speechSynthesis.getVoices(); };
+    const load = () => { window.speechSynthesis.getVoices(); }; // side-effect: caches internally
     load();
     window.speechSynthesis.addEventListener("voiceschanged", load);
     return () => window.speechSynthesis.removeEventListener("voiceschanged", load);
   }, []);
 
-  // Advance only when both speech AND minimum dwell have completed for this generation
+  // Advance only when both speech AND minimum dwell have finished for this generation
   const tryAdvance = useCallback((gen: number) => {
     if (gen !== genRef.current) return;
     if (!speechDoneRef.current || !dwellDoneRef.current) return;
@@ -61,7 +74,7 @@ export function ProductTour({ activeStep, onStart, onEnd }: ProductTourProps) {
 
     router.push(step.page);
 
-    // Minimum dwell timer — advance only after this AND speech are done
+    // Minimum dwell — card stays visible for at least step.dwellMs
     if (dwellTimerRef.current) clearTimeout(dwellTimerRef.current);
     dwellTimerRef.current = setTimeout(() => {
       if (gen !== genRef.current) return;
@@ -69,51 +82,55 @@ export function ProductTour({ activeStep, onStart, onEnd }: ProductTourProps) {
       tryAdvance(gen);
     }, step.dwellMs);
 
-    // Small delay so navigation settles before speech starts
-    const speakTimer = setTimeout(() => {
+    // Wait 300ms for navigation to settle, then speak
+    const navDelay = setTimeout(() => {
       if (gen !== genRef.current) return;
-      if (typeof window === "undefined" || !window.speechSynthesis) {
+      if (!window.speechSynthesis) {
         speechDoneRef.current = true;
         tryAdvance(gen);
         return;
       }
+
+      // Cancel any in-progress speech, then wait one tick before queuing the new utterance.
+      // Chrome drops the voice assignment if cancel() and speak() happen in the same tick.
       window.speechSynthesis.cancel();
-      const utt = new SpeechSynthesisUtterance(step.narration);
-      utt.rate = 0.92;
-      utt.pitch = 1.0;
-      utt.volume = 1;
 
-      // Prefer Samantha (macOS) → Google US English (Chrome) → any en-US → fallback
-      const voices = voicesRef.current;
-      const voice =
-        voices.find((v) => v.name === "Samantha") ??
-        voices.find((v) => v.name === "Google US English") ??
-        voices.find((v) => v.lang.startsWith("en-US") && !v.name.includes("(")) ??
-        (voices.length > 0 ? voices[0] : null);
-      if (voice) utt.voice = voice;
-
-      setIsSpeaking(true);
-
-      utt.onend = () => {
+      const speakDelay = setTimeout(() => {
         if (gen !== genRef.current) return;
-        setIsSpeaking(false);
-        speechDoneRef.current = true;
-        tryAdvance(gen);
-      };
-      utt.onerror = (e) => {
-        if (gen !== genRef.current) return;
-        // "interrupted" means we cancelled intentionally — don't treat as done
-        if ((e as SpeechSynthesisErrorEvent).error === "interrupted") return;
-        setIsSpeaking(false);
-        speechDoneRef.current = true;
-        tryAdvance(gen);
-      };
 
-      window.speechSynthesis.speak(utt);
+        const utt = new SpeechSynthesisUtterance(step.narration);
+        utt.rate = 0.92;
+        utt.pitch = 1.0;
+        utt.volume = 1;
+
+        const voice = pickVoice();
+        if (voice) utt.voice = voice;
+
+        setIsSpeaking(true);
+
+        utt.onend = () => {
+          if (gen !== genRef.current) return;
+          setIsSpeaking(false);
+          speechDoneRef.current = true;
+          tryAdvance(gen);
+        };
+        utt.onerror = (e) => {
+          if (gen !== genRef.current) return;
+          // "interrupted" = we cancelled intentionally — do not treat as completion
+          if ((e as SpeechSynthesisErrorEvent).error === "interrupted") return;
+          setIsSpeaking(false);
+          speechDoneRef.current = true;
+          tryAdvance(gen);
+        };
+
+        window.speechSynthesis.speak(utt);
+      }, 0); // 0ms: just flush the cancel before queuing
+
+      return () => clearTimeout(speakDelay);
     }, 300);
 
     return () => {
-      clearTimeout(speakTimer);
+      clearTimeout(navDelay);
       if (dwellTimerRef.current) clearTimeout(dwellTimerRef.current);
     };
   }, [isActive, stepIndex]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -218,7 +235,7 @@ export function ProductTour({ activeStep, onStart, onEnd }: ProductTourProps) {
           {/* Description */}
           <p className="mb-4 text-sm leading-relaxed text-zinc-400">{currentStep.description}</p>
 
-          {/* Narration indicator / done state */}
+          {/* Narration indicator / done banner */}
           {isDone ? (
             <div className="mb-4 rounded-lg border border-violet-500/30 bg-violet-500/10 px-4 py-3 text-center">
               <div className="text-sm font-medium text-violet-300">Tour complete</div>
