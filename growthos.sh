@@ -129,7 +129,7 @@ npx prisma generate > "$LOG_DIR/prisma-generate.log" 2>&1
 success "Prisma client generated"
 
 # ── Step 3: Backend ────────────────────────────────────────────────────────────
-header "3/4  Starting backend (http://localhost:3001)..."
+header "3/4  Starting backend (http://localhost:4011)..."
 cd "$ROOT/backend"
 npm run dev > "$LOG_DIR/backend.log" 2>&1 &
 BACKEND_PID=$!
@@ -137,8 +137,8 @@ PIDS+=("$BACKEND_PID")
 
 info "Waiting for backend..."
 for i in $(seq 1 30); do
-  if curl -sf http://localhost:3001/api/system &>/dev/null; then
-    success "Backend ready → http://localhost:3001"
+  if curl -sf http://localhost:4011/api/system &>/dev/null; then
+    success "Backend ready → http://localhost:4011"
     break
   fi
   if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
@@ -151,7 +151,7 @@ for i in $(seq 1 30); do
 done
 
 # ── Step 4: Frontend ───────────────────────────────────────────────────────────
-header "4/4  Starting frontend (http://localhost:3000)..."
+header "4/4  Starting frontend (http://localhost:4010)..."
 cd "$ROOT/frontend"
 npm run dev > "$LOG_DIR/frontend.log" 2>&1 &
 FRONTEND_PID=$!
@@ -159,8 +159,8 @@ PIDS+=("$FRONTEND_PID")
 
 info "Waiting for frontend..."
 for i in $(seq 1 30); do
-  if curl -sf http://localhost:3000 &>/dev/null; then
-    success "Frontend ready → http://localhost:3000"
+  if curl -sf http://localhost:4010 &>/dev/null; then
+    success "Frontend ready → http://localhost:4010"
     break
   fi
   if ! kill -0 "$FRONTEND_PID" 2>/dev/null; then
@@ -176,16 +176,16 @@ done
 echo ""
 echo -e "${GREEN}${BOLD}  ✓ GrowthOS is running${RESET}"
 echo ""
-echo -e "  ${BOLD}Dashboard${RESET}   http://localhost:3000"
-echo -e "  ${BOLD}API${RESET}         http://localhost:3001"
-echo -e "  ${BOLD}MinIO${RESET}       http://localhost:9001  (growthos / growthos)"
+echo -e "  ${BOLD}Dashboard${RESET}   http://localhost:4010"
+echo -e "  ${BOLD}API${RESET}         http://localhost:4011"
+echo -e "  ${BOLD}MinIO${RESET}       http://localhost:59001  (growthos / growthos)"
 echo ""
 echo -e "  ${BOLD}Logs${RESET}        $LOG_DIR/"
 echo -e "  ${CYAN}Press Ctrl+C to stop all services${RESET}"
 echo ""
 
 # ── Open browser ───────────────────────────────────────────────────────────────
-open "http://localhost:3000" 2>/dev/null || true
+open "http://localhost:4010" 2>/dev/null || true
 
 # ── Tail logs ─────────────────────────────────────────────────────────────────
 tail -f "$LOG_DIR/backend.log" "$LOG_DIR/frontend.log" &
