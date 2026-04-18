@@ -128,6 +128,13 @@ fi
 npx prisma generate > "$LOG_DIR/prisma-generate.log" 2>&1
 success "Prisma client generated"
 
+# ── Seed demo data ────────────────────────────────────────────────────────────
+info "Seeding demo data..."
+cd "$ROOT"
+npx ts-node scripts/seed-demo.ts > "$LOG_DIR/seed.log" 2>&1 && \
+  success "Demo data ready" || \
+  warn "Demo seed had warnings — check $LOG_DIR/seed.log"
+
 # ── Step 3: Backend ────────────────────────────────────────────────────────────
 header "3/4  Starting backend (http://localhost:4011)..."
 cd "$ROOT/backend"
