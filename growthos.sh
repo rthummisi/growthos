@@ -5,15 +5,6 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="$ROOT/.logs"
 mkdir -p "$LOG_DIR"
 
-# ── Self-register as global command ───────────────────────────────────────────
-SYMLINK="/usr/local/bin/growthos"
-if [[ ! -L "$SYMLINK" ]] || [[ "$(readlink "$SYMLINK")" != "$ROOT/growthos.sh" ]]; then
-  echo -e "\033[0;36m  →\033[0m Registering 'growthos' as a global command..."
-  ln -sf "$ROOT/growthos.sh" "$SYMLINK" 2>/dev/null || \
-    sudo ln -sf "$ROOT/growthos.sh" "$SYMLINK"
-  echo -e "\033[0;32m  ✓\033[0m You can now run 'growthos' from anywhere"
-fi
-
 # ── Colours ────────────────────────────────────────────────────────────────────
 BOLD="\033[1m"
 GREEN="\033[0;32m"
@@ -33,13 +24,24 @@ PIDS=()
 cleanup() {
   echo ""
   header "Shutting down GrowthOS..."
-  for pid in "${PIDS[@]}"; do
-    kill "$pid" 2>/dev/null || true
-  done
-  wait 2>/dev/null || true
+  if [[ ${#PIDS[@]} -gt 0 ]]; then
+    for pid in "${PIDS[@]}"; do
+      kill "$pid" 2>/dev/null || true
+    done
+    wait 2>/dev/null || true
+  fi
   success "All processes stopped."
 }
 trap cleanup EXIT INT TERM
+
+# ── Self-register as global command ───────────────────────────────────────────
+SYMLINK="/usr/local/bin/growthos"
+if [[ ! -L "$SYMLINK" ]] || [[ "$(readlink "$SYMLINK")" != "$ROOT/growthos.sh" ]]; then
+  echo -e "${CYAN}  →${RESET} Registering 'growthos' as a global command..."
+  ln -sf "$ROOT/growthos.sh" "$SYMLINK" 2>/dev/null || \
+    sudo ln -sf "$ROOT/growthos.sh" "$SYMLINK"
+  success "You can now run 'growthos' from anywhere"
+fi
 
 # ── Banner ─────────────────────────────────────────────────────────────────────
 echo -e "${BOLD}"
@@ -50,23 +52,30 @@ echo "  ██║   ██║██╔══██╗██║   ██║██
 echo "  ╚██████╔╝██║  ██║╚██████╔╝╚███╔███╔╝   ██║   ██║  ██║╚██████╔╝███████║"
 echo "   ╚═════╝ ╚═╝  ╚═╝ ╚═════╝  ╚══╝╚══╝    ╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚══════╝"
 echo -e "${RESET}"
-echo -e "  ${CYAN}PLG Distribution Engine — v$(node -p "require('$ROOT/package.json').version")${RESET}"
+echo -e "  ${CYAN}PLG Distribution Engine — v$(node -p "require('$ROOT/package.json').version" 2>/dev/null || echo '1.2.3')${RESET}"
 echo ""
 
 # ── Load .env ─────────────────────────────────────────────────────────────────
-if [[ -f "$ROOT/.env" ]]; then
-  set -a; source "$ROOT/.env"; set +a
+ENV_FILE="$ROOT/.env"
+if [[ -f "$ENV_FILE" ]]; then
+  set -a; source "$ENV_FILE"; set +a
   success "Environment loaded from .env"
 else
-  warn ".env not found — using system environment"
+  warn ".env not found at $ENV_FILE"
+  warn "Create it from .env.example: cp $ROOT/.env.example $ROOT/.env"
 fi
 
 # ── Check ANTHROPIC_API_KEY ───────────────────────────────────────────────────
 if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
-  error "ANTHROPIC_API_KEY is not set in .env — agents will not function"
-  echo "  Set it in $ROOT/.env and restart."
+  error "ANTHROPIC_API_KEY is not set — agents will not function"
+  echo ""
+  echo "  Add it to $ROOT/.env:"
+  echo "    ANTHROPIC_API_KEY=sk-ant-..."
+  echo ""
+  echo "  Then re-run: growthos"
   exit 1
 fi
+success "ANTHROPIC_API_KEY detected"
 
 # ── Step 1: Docker services ────────────────────────────────────────────────────
 header "1/4  Starting infrastructure (Postgres · Redis · MinIO)..."
@@ -83,39 +92,35 @@ success "Docker services started"
 # Wait for Postgres
 info "Waiting for Postgres..."
 for i in $(seq 1 30); do
-  if docker exec "$(docker compose -f "$ROOT/infra/docker-compose.yml" ps -q postgres)" \
-    pg_isready -U growthos -d growthos &>/dev/null 2>&1; then
+  PG_CONTAINER="$(docker compose -f "$ROOT/infra/docker-compose.yml" ps -q postgres 2>/dev/null)"
+  if [[ -n "$PG_CONTAINER" ]] && docker exec "$PG_CONTAINER" pg_isready -U growthos -d growthos &>/dev/null 2>&1; then
     success "Postgres ready"
     break
   fi
-  if [[ $i -eq 30 ]]; then
-    error "Postgres did not become ready in 30s"
-    exit 1
-  fi
+  [[ $i -eq 30 ]] && { error "Postgres did not become ready in 30s"; exit 1; }
   sleep 1
 done
 
 # Wait for Redis
 info "Waiting for Redis..."
 for i in $(seq 1 15); do
-  if docker exec "$(docker compose -f "$ROOT/infra/docker-compose.yml" ps -q redis)" \
-    redis-cli ping &>/dev/null 2>&1; then
+  REDIS_CONTAINER="$(docker compose -f "$ROOT/infra/docker-compose.yml" ps -q redis 2>/dev/null)"
+  if [[ -n "$REDIS_CONTAINER" ]] && docker exec "$REDIS_CONTAINER" redis-cli ping &>/dev/null 2>&1; then
     success "Redis ready"
     break
   fi
-  if [[ $i -eq 15 ]]; then
-    error "Redis did not become ready in 15s"
-    exit 1
-  fi
+  [[ $i -eq 15 ]] && { error "Redis did not become ready in 15s"; exit 1; }
   sleep 1
 done
 
 # ── Step 2: Prisma migration ───────────────────────────────────────────────────
 header "2/4  Running database migrations..."
 cd "$ROOT"
-npx prisma migrate deploy > "$LOG_DIR/migrate.log" 2>&1 && \
-  success "Migrations applied" || \
+if npx prisma migrate deploy > "$LOG_DIR/migrate.log" 2>&1; then
+  success "Migrations applied"
+else
   warn "Migration had warnings — check $LOG_DIR/migrate.log"
+fi
 npx prisma generate > "$LOG_DIR/prisma-generate.log" 2>&1
 success "Prisma client generated"
 
@@ -134,12 +139,10 @@ for i in $(seq 1 30); do
   fi
   if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
     error "Backend crashed — check $LOG_DIR/backend.log"
-    cat "$LOG_DIR/backend.log" | tail -20
+    tail -20 "$LOG_DIR/backend.log"
     exit 1
   fi
-  if [[ $i -eq 30 ]]; then
-    warn "Backend health check timed out — may still be compiling"
-  fi
+  [[ $i -eq 30 ]] && warn "Backend health check timed out — may still be compiling"
   sleep 1
 done
 
@@ -158,12 +161,10 @@ for i in $(seq 1 30); do
   fi
   if ! kill -0 "$FRONTEND_PID" 2>/dev/null; then
     error "Frontend crashed — check $LOG_DIR/frontend.log"
-    cat "$LOG_DIR/frontend.log" | tail -20
+    tail -20 "$LOG_DIR/frontend.log"
     exit 1
   fi
-  if [[ $i -eq 30 ]]; then
-    warn "Frontend health check timed out — may still be compiling"
-  fi
+  [[ $i -eq 30 ]] && warn "Frontend health check timed out — may still be compiling"
   sleep 1
 done
 
