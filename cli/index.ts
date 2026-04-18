@@ -7,6 +7,7 @@ import { statusCommand } from "./commands/status";
 import { scheduleCommand } from "./commands/schedule";
 import { alertsCommand } from "./commands/alerts";
 import { demoCommand } from "./commands/demo";
+import { startCommand } from "./commands/start";
 
 const program = new Command();
 
@@ -35,6 +36,11 @@ program
   );
 
 program.command("alerts").action(alertsCommand);
+
+program
+  .command("start")
+  .description("Boot the full GrowthOS stack (Docker + DB + backend + frontend)")
+  .action(startCommand);
 
 program
   .command("demo")
