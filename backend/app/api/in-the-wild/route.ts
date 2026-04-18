@@ -21,5 +21,15 @@ export async function GET(req: NextRequest) {
 
   const lastScan = matches[0]?.fetchedAt ?? null;
 
-  return json({ matches, signals, lastScan });
+  const activeSources = [
+    process.env.GITHUB_TOKEN ? "GitHub" : null,
+    "Hacker News",
+    "Stack Overflow",
+    "Reddit",
+    "DEV.to",
+    "Lobsters",
+    process.env.BRAVE_SEARCH_API_KEY ? "Web (Brave)" : null
+  ].filter(Boolean);
+
+  return json({ matches, signals, lastScan, activeSources });
 }

@@ -86,5 +86,16 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return json({ matches, signals, scannedAt: new Date().toISOString() });
+  // Summarise which sources are active so the frontend can show them
+  const activeSources = [
+    process.env.GITHUB_TOKEN ? "GitHub" : null,
+    "Hacker News",
+    "Stack Overflow",
+    "Reddit",
+    "DEV.to",
+    "Lobsters",
+    process.env.BRAVE_SEARCH_API_KEY ? "Web (Brave)" : null
+  ].filter(Boolean);
+
+  return json({ matches, signals, scannedAt: new Date().toISOString(), activeSources });
 }

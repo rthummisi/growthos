@@ -27,6 +27,7 @@ interface FeedData {
   matches: WildMatch[];
   signals: MarketSignal[];
   lastScan: string | null;
+  activeSources: string[];
 }
 
 const PRIORITY_STYLES: Record<string, string> = {
@@ -87,8 +88,7 @@ export function InTheWildClient() {
       const result = await apiGet<FeedData>("/in-the-wild?productId=demo-product-1");
       setData(result);
     } catch {
-      // first load with no data yet is fine
-      setData({ matches: [], signals: [], lastScan: null });
+      setData({ matches: [], signals: [], lastScan: null, activeSources: [] });
     }
   }, []);
 
@@ -135,10 +135,20 @@ export function InTheWildClient() {
             )}
           </button>
         </div>
+        {data && data.activeSources.length > 0 && !scanning && (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {data.activeSources.map((s) => (
+              <span key={s} className="rounded-full bg-zinc-800 px-2.5 py-0.5 text-xs text-zinc-400">
+                {s}
+              </span>
+            ))}
+          </div>
+        )}
         {scanning && (
           <div className="mt-3 rounded-lg bg-zinc-800/50 px-4 py-3 text-sm text-zinc-400">
-            Searching GitHub Issues for conversations where your product is the answer, then running market signal analysis…
-            <span className="ml-2 text-zinc-500">This takes ~15–20s</span>
+            Searching GitHub, Hacker News, Stack Overflow, Reddit, DEV.to, Lobsters
+            {process.env.NEXT_PUBLIC_BRAVE_ENABLED === "1" ? ", and the web" : ""} for conversations where your product is the answer, then running market signal analysis…
+            <span className="ml-2 text-zinc-500">~20–30s</span>
           </div>
         )}
         {error && (
