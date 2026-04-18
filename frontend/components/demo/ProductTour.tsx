@@ -10,99 +10,150 @@ interface ProductTourProps {
   onEnd: () => void;
 }
 
-function speak(text: string, onEnd: () => void) {
-  if (typeof window === "undefined" || !window.speechSynthesis) {
-    setTimeout(onEnd, 3000);
-    return;
-  }
-  window.speechSynthesis.cancel();
-  const utt = new SpeechSynthesisUtterance(text);
-  utt.rate = 0.92;
-  utt.pitch = 1.0;
-  utt.volume = 1;
-
-  const voices = window.speechSynthesis.getVoices();
-  const preferred = voices.find(
-    (v) => v.name.includes("Samantha") || v.name.includes("Google US English") || v.name.includes("Alex")
-  );
-  if (preferred) utt.voice = preferred;
-
-  utt.onend = onEnd;
-  utt.onerror = onEnd;
-  window.speechSynthesis.speak(utt);
-}
-
 export function ProductTour({ activeStep, onStart, onEnd }: ProductTourProps) {
   const router = useRouter();
   const [stepIndex, setStepIndex] = useState(0);
   const [isActive, setIsActive] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
-  const advanceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isDone, setIsDone] = useState(false);
 
-  const currentStep = TOUR_STEPS[stepIndex];
+  // Refs that don't cause re-renders
+  const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
+  const genRef = useRef(0);         // incremented on every step change / cancel — stale callbacks bail out
+  const speechDoneRef = useRef(false);
+  const dwellDoneRef = useRef(false);
+  const dwellTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const advance = useCallback(() => {
+  // Load voices asynchronously — Chrome returns empty array on first call
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
+    const load = () => { voicesRef.current = window.speechSynthesis.getVoices(); };
+    load();
+    window.speechSynthesis.addEventListener("voiceschanged", load);
+    return () => window.speechSynthesis.removeEventListener("voiceschanged", load);
+  }, []);
+
+  // Advance only when both speech AND minimum dwell have completed for this generation
+  const tryAdvance = useCallback((gen: number) => {
+    if (gen !== genRef.current) return;
+    if (!speechDoneRef.current || !dwellDoneRef.current) return;
     setStepIndex((i) => {
-      const next = i + 1;
-      if (next >= TOUR_STEPS.length) {
+      if (i >= TOUR_STEPS.length - 1) {
+        setIsDone(true);
         return i;
       }
-      return next;
+      return i + 1;
     });
   }, []);
 
-  const endTour = useCallback(() => {
-    window.speechSynthesis?.cancel();
-    if (advanceRef.current) clearTimeout(advanceRef.current);
-    setIsActive(false);
-    setStepIndex(0);
-    onEnd();
-  }, [onEnd]);
-
-  // Navigate + narrate on step change
+  // Navigate + narrate whenever stepIndex changes while active
   useEffect(() => {
-    if (!isActive || !currentStep) return;
-    router.push(currentStep.page);
+    if (!isActive) return;
+    const step = TOUR_STEPS[stepIndex];
+    if (!step) return;
 
-    if (advanceRef.current) clearTimeout(advanceRef.current);
+    const gen = ++genRef.current;
+    speechDoneRef.current = false;
+    dwellDoneRef.current = false;
+    setIsDone(false);
+    setIsSpeaking(false);
 
-    const fallback = setTimeout(() => {
-      if (stepIndex < TOUR_STEPS.length - 1) advance();
-      else endTour();
-    }, 12000);
-    advanceRef.current = fallback;
+    router.push(step.page);
 
-    speak(currentStep.narration, () => {
-      clearTimeout(fallback);
-      advanceRef.current = setTimeout(() => {
-        if (stepIndex < TOUR_STEPS.length - 1) advance();
-        else endTour();
-      }, 1200);
-    });
+    // Minimum dwell timer — advance only after this AND speech are done
+    if (dwellTimerRef.current) clearTimeout(dwellTimerRef.current);
+    dwellTimerRef.current = setTimeout(() => {
+      if (gen !== genRef.current) return;
+      dwellDoneRef.current = true;
+      tryAdvance(gen);
+    }, step.dwellMs);
+
+    // Small delay so navigation settles before speech starts
+    const speakTimer = setTimeout(() => {
+      if (gen !== genRef.current) return;
+      if (typeof window === "undefined" || !window.speechSynthesis) {
+        speechDoneRef.current = true;
+        tryAdvance(gen);
+        return;
+      }
+      window.speechSynthesis.cancel();
+      const utt = new SpeechSynthesisUtterance(step.narration);
+      utt.rate = 0.92;
+      utt.pitch = 1.0;
+      utt.volume = 1;
+
+      // Prefer Samantha (macOS) → Google US English (Chrome) → any en-US → fallback
+      const voices = voicesRef.current;
+      const voice =
+        voices.find((v) => v.name === "Samantha") ??
+        voices.find((v) => v.name === "Google US English") ??
+        voices.find((v) => v.lang.startsWith("en-US") && !v.name.includes("(")) ??
+        (voices.length > 0 ? voices[0] : null);
+      if (voice) utt.voice = voice;
+
+      setIsSpeaking(true);
+
+      utt.onend = () => {
+        if (gen !== genRef.current) return;
+        setIsSpeaking(false);
+        speechDoneRef.current = true;
+        tryAdvance(gen);
+      };
+      utt.onerror = (e) => {
+        if (gen !== genRef.current) return;
+        // "interrupted" means we cancelled intentionally — don't treat as done
+        if ((e as SpeechSynthesisErrorEvent).error === "interrupted") return;
+        setIsSpeaking(false);
+        speechDoneRef.current = true;
+        tryAdvance(gen);
+      };
+
+      window.speechSynthesis.speak(utt);
+    }, 300);
 
     return () => {
-      if (advanceRef.current) clearTimeout(advanceRef.current);
+      clearTimeout(speakTimer);
+      if (dwellTimerRef.current) clearTimeout(dwellTimerRef.current);
     };
   }, [isActive, stepIndex]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const endTour = useCallback(() => {
+    genRef.current++;
+    window.speechSynthesis?.cancel();
+    if (dwellTimerRef.current) clearTimeout(dwellTimerRef.current);
+    setIsActive(false);
+    setStepIndex(0);
+    setIsDone(false);
+    setIsSpeaking(false);
+    onEnd();
+  }, [onEnd]);
+
   const startTour = () => {
+    genRef.current++;
     setStepIndex(0);
     setIsActive(true);
     setIsPaused(false);
+    setIsDone(false);
     onStart();
   };
 
   const prev = () => {
+    genRef.current++;
     window.speechSynthesis?.cancel();
-    if (advanceRef.current) clearTimeout(advanceRef.current);
+    if (dwellTimerRef.current) clearTimeout(dwellTimerRef.current);
     setStepIndex((i) => Math.max(0, i - 1));
   };
 
   const next = () => {
+    genRef.current++;
     window.speechSynthesis?.cancel();
-    if (advanceRef.current) clearTimeout(advanceRef.current);
-    if (stepIndex < TOUR_STEPS.length - 1) advance();
-    else endTour();
+    if (dwellTimerRef.current) clearTimeout(dwellTimerRef.current);
+    if (stepIndex >= TOUR_STEPS.length - 1) {
+      endTour();
+    } else {
+      setStepIndex(stepIndex + 1);
+    }
   };
 
   const togglePause = () => {
@@ -124,14 +175,16 @@ export function ProductTour({ activeStep, onStart, onEnd }: ProductTourProps) {
           <span className="text-base">▶</span>
           <div>
             <div className="font-medium">Take a Tour</div>
-            <div className="text-xs text-violet-400/70">2-min walkthrough with narration</div>
+            <div className="text-xs text-violet-400/70">3-min walkthrough with narration</div>
           </div>
         </div>
       </button>
     );
   }
 
+  const currentStep = TOUR_STEPS[stepIndex];
   const progress = ((stepIndex + 1) / TOUR_STEPS.length) * 100;
+  const isLastStep = stepIndex === TOUR_STEPS.length - 1;
 
   return (
     <>
@@ -165,25 +218,36 @@ export function ProductTour({ activeStep, onStart, onEnd }: ProductTourProps) {
           {/* Description */}
           <p className="mb-4 text-sm leading-relaxed text-zinc-400">{currentStep.description}</p>
 
-          {/* Narration indicator */}
-          <div className="mb-4 flex items-center gap-2 rounded-lg bg-zinc-800/60 px-3 py-2">
-            <div className={`flex gap-0.5 ${isPaused ? "" : "animate-pulse"}`}>
-              {[1, 2, 3, 4].map((i) => (
-                <div
-                  key={i}
-                  className="w-0.5 rounded-full bg-violet-400"
-                  style={{ height: `${8 + i * 3}px` }}
-                />
-              ))}
+          {/* Narration indicator / done state */}
+          {isDone ? (
+            <div className="mb-4 rounded-lg border border-violet-500/30 bg-violet-500/10 px-4 py-3 text-center">
+              <div className="text-sm font-medium text-violet-300">Tour complete</div>
+              <div className="mt-0.5 text-xs text-violet-400/70">
+                You&apos;re ready to distribute your product
+              </div>
             </div>
-            <span className="text-xs text-zinc-500">{isPaused ? "Paused" : "Narrating..."}</span>
-            <button
-              onClick={togglePause}
-              className="ml-auto text-xs text-zinc-500 hover:text-zinc-300"
-            >
-              {isPaused ? "▶ Resume" : "⏸ Pause"}
-            </button>
-          </div>
+          ) : (
+            <div className="mb-4 flex items-center gap-2 rounded-lg bg-zinc-800/60 px-3 py-2">
+              <div className={`flex gap-0.5 ${isSpeaking && !isPaused ? "animate-pulse" : ""}`}>
+                {[1, 2, 3, 4].map((i) => (
+                  <div
+                    key={i}
+                    className="w-0.5 rounded-full bg-violet-400"
+                    style={{ height: `${8 + i * 3}px` }}
+                  />
+                ))}
+              </div>
+              <span className="text-xs text-zinc-500">
+                {isPaused ? "Paused" : isSpeaking ? "Narrating..." : "Loading..."}
+              </span>
+              <button
+                onClick={togglePause}
+                className="ml-auto text-xs text-zinc-500 hover:text-zinc-300"
+              >
+                {isPaused ? "▶ Resume" : "⏸ Pause"}
+              </button>
+            </div>
+          )}
 
           {/* Dot indicators */}
           <div className="mb-4 flex justify-center gap-1.5">
@@ -202,21 +266,30 @@ export function ProductTour({ activeStep, onStart, onEnd }: ProductTourProps) {
           </div>
 
           {/* Controls */}
-          <div className="flex gap-2">
+          {isDone ? (
             <button
-              onClick={prev}
-              disabled={stepIndex === 0}
-              className="flex-1 rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-400 hover:bg-zinc-800 disabled:opacity-30"
+              onClick={endTour}
+              className="w-full rounded-lg bg-violet-600 px-3 py-2.5 text-sm font-medium text-white hover:bg-violet-500"
             >
-              ← Prev
+              Start Using GrowthOS →
             </button>
-            <button
-              onClick={next}
-              className="flex-1 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-500"
-            >
-              {stepIndex === TOUR_STEPS.length - 1 ? "Finish →" : "Next →"}
-            </button>
-          </div>
+          ) : (
+            <div className="flex gap-2">
+              <button
+                onClick={prev}
+                disabled={stepIndex === 0}
+                className="flex-1 rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-400 hover:bg-zinc-800 disabled:opacity-30"
+              >
+                ← Prev
+              </button>
+              <button
+                onClick={next}
+                className="flex-1 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-500"
+              >
+                {isLastStep ? "Finish →" : "Next →"}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </>
