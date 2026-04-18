@@ -128,18 +128,6 @@ fi
 npx prisma generate > "$LOG_DIR/prisma-generate.log" 2>&1
 success "Prisma client generated"
 
-# ── Seed demo data (once only, flag file guards re-runs) ──────────────────────
-SEED_FLAG="$ROOT/.demo-seeded"
-if [[ ! -f "$SEED_FLAG" ]]; then
-  info "Seeding demo data (first launch only)..."
-  cd "$ROOT"
-  npx ts-node scripts/seed-demo.ts > "$LOG_DIR/seed.log" 2>&1 && \
-    touch "$SEED_FLAG" && success "Demo data seeded" || \
-    warn "Demo seed had warnings — check $LOG_DIR/seed.log"
-else
-  success "Demo data already seeded — skipping"
-fi
-
 # ── Step 3: Backend ────────────────────────────────────────────────────────────
 header "3/4  Starting backend (http://localhost:4011)..."
 cd "$ROOT/backend"
