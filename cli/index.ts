@@ -51,4 +51,7 @@ program
     demoCommand(options.url, options.description, options.outputDir)
   );
 
+// Default action: no subcommand → boot the stack
+program.action(startCommand);
+
 program.parseAsync(process.argv);

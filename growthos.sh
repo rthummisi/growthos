@@ -180,6 +180,9 @@ echo -e "  ${BOLD}Logs${RESET}        $LOG_DIR/"
 echo -e "  ${CYAN}Press Ctrl+C to stop all services${RESET}"
 echo ""
 
+# ── Open browser ───────────────────────────────────────────────────────────────
+open "http://localhost:3000" 2>/dev/null || true
+
 # ── Tail logs ─────────────────────────────────────────────────────────────────
 tail -f "$LOG_DIR/backend.log" "$LOG_DIR/frontend.log" &
 PIDS+=($!)
