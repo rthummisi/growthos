@@ -4,19 +4,17 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { TOUR_STEPS } from "./tourSteps";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:4011/api";
-
 interface ProductTourProps {
   activeStep: string | null;
   onStart: () => void;
   onEnd: () => void;
 }
 
-// Fetch narration audio from the backend edge-tts endpoint and return a blob URL.
-// Returns null on failure (caller falls back to silence + dwell only).
+// Fetch narration audio from the same-origin frontend API route.
+// Returns null on failure (caller falls back to dwell-only silence).
 async function fetchAudio(text: string): Promise<string | null> {
   try {
-    const res = await fetch(`${API_BASE}/demo/speak`, {
+    const res = await fetch(`/api/demo/speak`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text }),
