@@ -85,8 +85,12 @@ if ! docker info &>/dev/null; then
   exit 1
 fi
 
-docker compose -f "$ROOT/infra/docker-compose.yml" up -d --remove-orphans \
-  > "$LOG_DIR/docker.log" 2>&1
+if ! docker compose -f "$ROOT/infra/docker-compose.yml" up -d --remove-orphans \
+  > "$LOG_DIR/docker.log" 2>&1; then
+  error "Docker services failed to start:"
+  cat "$LOG_DIR/docker.log"
+  exit 1
+fi
 success "Docker services started"
 
 # Wait for Postgres
