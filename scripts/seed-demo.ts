@@ -4,6 +4,11 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 async function main() {
+  const existing = await prisma.product.findUnique({ where: { id: "demo-product-1" } });
+  if (existing) {
+    console.log("Demo data already exists — skipping.");
+    return;
+  }
   console.log("Seeding demo data...");
 
   // Product
