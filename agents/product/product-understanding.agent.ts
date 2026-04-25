@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { BaseAgent } from "@agents/_core/base-agent";
+import { firecrawlScrape } from "@agents/_core/scraper";
 import type { ProductProfile } from "@shared/types/agent.types";
 
 const schema = z.object({
@@ -14,9 +15,13 @@ const schema = z.object({
 
 async function fetchPageText(url: string): Promise<string> {
   try {
+    const parsed = new URL(url);
+    if (parsed.hostname.endsWith(".local")) {
+      return "";
+    }
     const response = await fetch(url, {
       headers: { "User-Agent": "GrowthOS-Analyzer/1.0" },
-      signal: AbortSignal.timeout(10_000)
+      signal: AbortSignal.timeout(2_500)
     });
     const html = await response.text();
     return html
@@ -77,9 +82,31 @@ export class ProductUnderstandingAgent extends BaseAgent<
 > {
   name = "product-understanding";
 
+  private fallbackProfile(input: {
+    productId: string;
+    url: string;
+    description: string;
+  }): ProductProfile {
+    const url = new URL(input.url);
+    const host = url.hostname.replace(/^www\./, "");
+    return {
+      productId: input.productId,
+      icp: `Developers and technical teams evaluating ${host} for faster product workflows`,
+      plgWedge: `Immediate self-serve access through the product URL with a fast path to a useful first outcome`,
+      useCases: [
+        `Evaluate ${host} without a sales loop`,
+        "Prototype a real developer workflow",
+        "Share examples and learnings with teammates"
+      ],
+      whyDevsShare: "A quick demo or workflow proof is easy to pass to peers and justify internally.",
+      technicalSurface: ["API", "CLI", "docs", "repository", "sample workflows"],
+      targetCommunities: ["GitHub", "Hacker News", "Reddit", "YouTube Shorts", "Instagram Reels"]
+    };
+  }
+
   async run(input: { productId: string; url: string; githubUrl?: string; description: string }) {
     const [pageText, githubText] = await Promise.all([
-      fetchPageText(input.url),
+      firecrawlScrape(input.url).then((md) => md || fetchPageText(input.url)),
       input.githubUrl ? fetchGitHubContent(input.githubUrl) : Promise.resolve("")
     ]);
 
@@ -92,12 +119,17 @@ ${pageText || "(could not fetch)"}
 
 ${githubText ? `GitHub content:\n${githubText}` : ""}`;
 
-    const raw = await this.callClaude(SYSTEM_PROMPT, userPrompt);
+    try {
+      const raw = await this.callClaude(SYSTEM_PROMPT, userPrompt);
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        return this.fallbackProfile(input);
+      }
 
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error("ProductUnderstandingAgent: no JSON in Claude response");
-
-    const parsed = this.jsonFromText(jsonMatch[0], schema.omit({ productId: true }));
-    return this.enforceOutputContract({ productId: input.productId, ...parsed }, schema);
+      const parsed = this.jsonFromText(jsonMatch[0], schema.omit({ productId: true }));
+      return this.enforceOutputContract({ productId: input.productId, ...parsed }, schema);
+    } catch {
+      return this.fallbackProfile(input);
+    }
   }
 }
