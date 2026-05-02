@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SOURCE="${BASH_SOURCE[0]}"
+while [[ -L "$SOURCE" ]]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+ROOT="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 LOG_DIR="$ROOT/.logs"
 mkdir -p "$LOG_DIR"
 
@@ -35,13 +41,32 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # ── Self-register as global command ───────────────────────────────────────────
-SYMLINK="/usr/local/bin/growthos-start"
-if [[ ! -L "$SYMLINK" ]] || [[ "$(readlink "$SYMLINK")" != "$ROOT/growthos.sh" ]]; then
-  echo -e "${CYAN}  →${RESET} Registering 'growthos-start' as a global command..."
-  ln -sf "$ROOT/growthos.sh" "$SYMLINK" 2>/dev/null || \
-    sudo ln -sf "$ROOT/growthos.sh" "$SYMLINK"
-  success "You can now run 'growthos-start' from anywhere"
-fi
+register_command() {
+  local name="$1"
+  local install_dir=""
+  local IFS=':'
+  for dir in $PATH; do
+    if [[ -d "$dir" && -w "$dir" ]]; then
+      install_dir="$dir"
+      break
+    fi
+  done
+  if [[ -z "$install_dir" ]]; then
+    install_dir="$HOME/.local/bin"
+    mkdir -p "$install_dir"
+  fi
+
+  local symlink="$install_dir/$name"
+  if [[ ! -L "$symlink" ]] || [[ "$(readlink "$symlink")" != "$ROOT/growthos.sh" ]]; then
+    echo -e "${CYAN}  →${RESET} Registering '$name' as a global command..."
+    ln -sf "$ROOT/growthos.sh" "$symlink"
+    success "You can now run '$name' from anywhere"
+  fi
+}
+
+register_command "growth"
+register_command "growthos"
+register_command "growthos-start"
 
 # ── Banner ─────────────────────────────────────────────────────────────────────
 echo -e "${BOLD}"
@@ -72,7 +97,7 @@ if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
   echo "  Add it to $ROOT/.env:"
   echo "    ANTHROPIC_API_KEY=sk-ant-..."
   echo ""
-  echo "  Then re-run: growthos"
+  echo "  Then re-run: growth"
   exit 1
 fi
 success "ANTHROPIC_API_KEY detected"
