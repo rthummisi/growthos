@@ -6,6 +6,7 @@ import { Card } from "@frontend/components/ui/Card";
 import { ScoreBar } from "@frontend/components/ui/ScoreBar";
 import { Skeleton } from "@frontend/components/ui/Skeleton";
 import { Button } from "@frontend/components/ui/Button";
+import { CHANNEL_LABELS, type ChannelSlug } from "@shared/constants/channels";
 
 interface MetricRow {
   channelSlug?: string;
@@ -14,8 +15,17 @@ interface MetricRow {
   fetchedAt?: string;
 }
 
+interface UtmRow {
+  channelSlug?: string;
+  channelName?: string;
+  roi?: number;
+  activationRate?: number;
+  clickToSignupRate?: number;
+}
+
 interface ROIRankerProps {
   metrics: MetricRow[];
+  utmRows?: UtmRow[];
   onRefresh?: () => Promise<void>;
   lastUpdated?: string;
 }
@@ -40,7 +50,7 @@ function trendArrow(data: { v: number }[]): { symbol: string; color: string } {
   return { symbol: "→", color: "text-zinc-400" };
 }
 
-export function ROIRanker({ metrics, onRefresh, lastUpdated }: ROIRankerProps) {
+export function ROIRanker({ metrics, utmRows = [], onRefresh, lastUpdated }: ROIRankerProps) {
   const [refreshing, setRefreshing] = useState(false);
 
   const channelMap = new Map<string, number>();
@@ -53,15 +63,44 @@ export function ROIRanker({ metrics, onRefresh, lastUpdated }: ROIRankerProps) {
     }
   }
 
-  const rows =
-    channelMap.size > 0
+  const roiRows = utmRows
+    .filter((row) => row.channelSlug)
+    .map((row) => {
+      const channel = row.channelSlug!;
+      const roiScore = Number(row.roi ?? 0);
+      const activationRate = Number(row.activationRate ?? 0);
+      const clickToSignupRate = Number(row.clickToSignupRate ?? 0);
+      const fallbackMetricScore = channelMap.get(channel) ?? 0;
+
+      return {
+        channel,
+        label: row.channelName ?? CHANNEL_LABELS[channel as ChannelSlug] ?? channel,
+        roiScore,
+        score: Math.max(
+          fallbackMetricScore,
+          Math.min(100, Math.round(roiScore / 2 + activationRate * 1.5 + clickToSignupRate * 0.5))
+        )
+      };
+    })
+    .sort((a, b) => b.roiScore - a.roiScore || b.score - a.score);
+
+  const rows = roiRows.length > 0
+    ? roiRows.slice(0, 8)
+    : channelMap.size > 0
       ? [...channelMap.entries()]
           .sort((a, b) => b[1] - a[1])
           .slice(0, 8)
-          .map(([channel, score]) => ({ channel, score }))
+          .map(([channel, score]) => ({
+            channel,
+            label: CHANNEL_LABELS[channel as ChannelSlug] ?? channel,
+            score,
+            roiScore: 0
+          }))
       : ["github", "hackernews", "reddit", "twitter", "devto"].map((channel, i) => ({
           channel,
-          score: 88 - i * 7
+          label: CHANNEL_LABELS[channel as ChannelSlug] ?? channel,
+          score: 88 - i * 7,
+          roiScore: 0
         }));
 
   async function handleRefresh() {
@@ -106,8 +145,10 @@ export function ROIRanker({ metrics, onRefresh, lastUpdated }: ROIRankerProps) {
             <div key={row.channel} className="grid grid-cols-[1fr_80px_24px] items-center gap-3">
               <div className="space-y-1 min-w-0">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="truncate font-medium">{row.channel}</span>
-                  <span className="ml-2 tabular-nums text-zinc-300">{row.score}</span>
+                  <span className="truncate font-medium">{row.label}</span>
+                  <span className="ml-2 tabular-nums text-zinc-300">
+                    {row.roiScore > 0 ? `${row.roiScore} ROI` : row.score}
+                  </span>
                 </div>
                 <ScoreBar value={row.score} />
               </div>

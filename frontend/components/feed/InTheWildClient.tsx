@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { Card } from "@frontend/components/ui/Card";
 import { Badge } from "@frontend/components/ui/Badge";
+import { Select } from "@frontend/components/ui/Select";
 import { apiGet, apiPost } from "@frontend/lib/api";
 
 interface WildMatch {
@@ -28,6 +30,12 @@ interface FeedData {
   signals: MarketSignal[];
   lastScan: string | null;
   activeSources: string[];
+}
+
+interface ProductOption {
+  id: string;
+  url: string;
+  description: string;
 }
 
 const PRIORITY_STYLES: Record<string, string> = {
@@ -78,27 +86,43 @@ function ReplyBox({ reply }: { reply: string }) {
   );
 }
 
-export function InTheWildClient() {
+export function InTheWildClient({
+  productId,
+  products
+}: {
+  productId?: string;
+  products: ProductOption[];
+}) {
+  const router = useRouter();
   const [data, setData] = useState<FeedData | null>(null);
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const activeProduct = products.find((product) => product.id === productId) ?? products[0];
 
   const load = useCallback(async () => {
+    if (!productId) {
+      setData({ matches: [], signals: [], lastScan: null, activeSources: [] });
+      return;
+    }
     try {
-      const result = await apiGet<FeedData>("/in-the-wild?productId=demo-product-1");
+      const result = await apiGet<FeedData>(`/in-the-wild?productId=${productId}&detailed=1`);
       setData(result);
     } catch {
       setData({ matches: [], signals: [], lastScan: null, activeSources: [] });
     }
-  }, []);
+  }, [productId]);
 
   useEffect(() => { void load(); }, [load]);
 
   const scan = async () => {
+    if (!productId) {
+      setError("Create a product first so GrowthOS has something to scan for.");
+      return;
+    }
     setScanning(true);
     setError(null);
     try {
-      const result = await apiPost<FeedData>("/in-the-wild/scan?productId=demo-product-1", {});
+      const result = await apiPost<FeedData>(`/in-the-wild/scan?productId=${productId}`, {});
       setData(result);
     } catch {
       setError("Scan failed — check that ANTHROPIC_API_KEY is set and the backend is running.");
@@ -120,21 +144,43 @@ export function InTheWildClient() {
                 : "Find live conversations where your product is the answer"}
             </p>
           </div>
-          <button
-            onClick={scan}
-            disabled={scanning}
-            className="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
-          >
-            {scanning ? (
-              <>
-                <span className="animate-spin">⟳</span>
-                Scanning…
-              </>
-            ) : (
-              <>⚡ Scan Now</>
-            )}
-          </button>
+          <div className="flex items-center gap-3">
+            {products.length > 0 ? (
+              <Select
+                value={activeProduct?.id ?? ""}
+                onChange={(event) => router.push(`/in-the-wild?productId=${event.target.value}`)}
+                className="min-w-72"
+              >
+                {products.map((product) => (
+                  <option key={product.id} value={product.id}>
+                    {new URL(product.url).hostname}
+                  </option>
+                ))}
+              </Select>
+            ) : null}
+            <button
+              onClick={scan}
+              disabled={scanning || !productId}
+              className="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
+            >
+              {scanning ? (
+                <>
+                  <span className="animate-spin">⟳</span>
+                  Scanning…
+                </>
+              ) : (
+                <>Scan Now</>
+              )}
+            </button>
+          </div>
         </div>
+        {activeProduct ? (
+          <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
+            <div className="text-xs uppercase tracking-[0.2em] text-zinc-500">Active Product</div>
+            <div className="mt-1 text-sm font-medium text-zinc-100">{new URL(activeProduct.url).hostname}</div>
+            <p className="mt-1 text-sm text-zinc-400">{activeProduct.description}</p>
+          </div>
+        ) : null}
         {data && data.activeSources.length > 0 && !scanning && (
           <div className="mt-3 flex flex-wrap gap-1.5">
             {data.activeSources.map((s) => (
@@ -220,7 +266,7 @@ export function InTheWildClient() {
       {/* Empty state */}
       {data && data.matches.length === 0 && !scanning && (
         <Card className="py-12 text-center">
-          <div className="text-4xl mb-3">🌐</div>
+          <div className="mb-3 text-4xl">🌐</div>
           <p className="text-sm font-medium text-zinc-300">No results yet</p>
           <p className="mt-1 text-xs text-zinc-500">
             Click <strong>Scan Now</strong> to search for live conversations where your product is the answer

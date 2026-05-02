@@ -1,6 +1,19 @@
 import { apiGet } from "@frontend/lib/api";
 import { TrackingDashboard } from "@frontend/components/tracking/TrackingDashboard";
 
+interface TrackingRow {
+  channelSlug?: string;
+  channelName?: string;
+  clicks?: number;
+  signups?: number;
+  activations?: number;
+  clickToSignupRate?: number;
+  signupToActivationRate?: number;
+  activationRate?: number;
+  roi?: number;
+  lastTouchAt?: string;
+}
+
 export default async function TrackingPage({
   searchParams
 }: {
@@ -19,7 +32,7 @@ export default async function TrackingPage({
     <TrackingDashboard
       productId={productId}
       initialMetrics={metrics}
-      initialUtm={utmData as Array<{ channelSlug?: string; clicks?: number; signups?: number; activations?: number }>}
+      initialUtm={utmData as TrackingRow[]}
     />
   );
 }

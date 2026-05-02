@@ -4,6 +4,21 @@ import { prisma } from "@backend/lib/prisma";
 import { json, auditMutation } from "@backend/lib/api";
 import { ensureDefaultChannels } from "@backend/lib/bootstrap";
 
+export async function GET() {
+  const products = await prisma.product.findMany({
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      url: true,
+      description: true,
+      createdAt: true
+    },
+    take: 25
+  });
+
+  return json(products);
+}
+
 export async function POST(request: NextRequest) {
   await ensureDefaultChannels();
   const body = (await request.json()) as {

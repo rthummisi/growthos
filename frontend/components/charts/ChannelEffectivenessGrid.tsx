@@ -3,6 +3,7 @@
 import { Card } from "@frontend/components/ui/Card";
 import { ScoreBar } from "@frontend/components/ui/ScoreBar";
 import { Badge } from "@frontend/components/ui/Badge";
+import { CHANNEL_LABELS, type ChannelSlug } from "@shared/constants/channels";
 
 interface MetricRow {
   channelSlug?: string;
@@ -12,8 +13,17 @@ interface MetricRow {
   fetchedAt?: string;
 }
 
+interface UtmRow {
+  channelSlug?: string;
+  roi?: number;
+  activationRate?: number;
+  clickToSignupRate?: number;
+  channelName?: string;
+}
+
 interface ChannelEffectivenessGridProps {
   metrics: MetricRow[];
+  utmRows?: UtmRow[];
   selectedChannel?: string;
   onChannelSelect?: (channel: string | undefined) => void;
 }
@@ -30,6 +40,7 @@ function relativeTime(iso: string): string {
 
 export function ChannelEffectivenessGrid({
   metrics,
+  utmRows = [],
   selectedChannel,
   onChannelSelect
 }: ChannelEffectivenessGridProps) {
@@ -51,14 +62,20 @@ export function ChannelEffectivenessGrid({
     }
   }
 
-  const rows =
+  const utmMap = new Map(utmRows.filter((row) => row.channelSlug).map((row) => [row.channelSlug!, row]));
+
+  const rows = (
     channelMap.size > 0
       ? [...channelMap.entries()].map(([slug, data]) => ({ slug, ...data }))
       : [
           { slug: "github", score: 0, metricKey: "stars", metricValue: 0, fetchedAt: new Date().toISOString() },
           { slug: "hackernews", score: 0, metricKey: "points", metricValue: 0, fetchedAt: new Date().toISOString() },
           { slug: "reddit", score: 0, metricKey: "upvotes", metricValue: 0, fetchedAt: new Date().toISOString() }
-        ];
+        ]
+  ).map((row) => ({
+    ...row,
+    utm: utmMap.get(row.slug)
+  }));
 
   return (
     <div className="space-y-2">
@@ -73,8 +90,10 @@ export function ChannelEffectivenessGrid({
               onClick={() => onChannelSelect?.(isSelected ? undefined : row.slug)}
             >
               <div className="flex items-center justify-between">
-                <h3 className="font-semibold capitalize">{row.slug}</h3>
-                <Badge className="bg-zinc-800 text-zinc-300 text-xs">{row.score}/100</Badge>
+                <h3 className="font-semibold">{row.utm?.channelName ?? CHANNEL_LABELS[row.slug as ChannelSlug] ?? row.slug}</h3>
+                <Badge className="bg-zinc-800 text-zinc-300 text-xs">
+                  {row.utm?.roi ? `${row.utm.roi} ROI` : `${row.score}/100`}
+                </Badge>
               </div>
               <ScoreBar value={row.score} className="mt-2" />
               <div className="mt-2 flex items-center justify-between text-xs text-zinc-500">
@@ -83,6 +102,16 @@ export function ChannelEffectivenessGrid({
                 </span>
                 <span>{relativeTime(row.fetchedAt)}</span>
               </div>
+              {row.utm ? (
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-zinc-400">
+                  <div className="rounded-lg bg-zinc-950 px-3 py-2">
+                    Signup rate {row.utm.clickToSignupRate?.toFixed(1) ?? "0.0"}%
+                  </div>
+                  <div className="rounded-lg bg-zinc-950 px-3 py-2">
+                    Activation rate {row.utm.activationRate?.toFixed(1) ?? "0.0"}%
+                  </div>
+                </div>
+              ) : null}
             </Card>
           );
         })}
