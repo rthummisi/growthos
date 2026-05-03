@@ -30,7 +30,13 @@ export async function GET(req: NextRequest) {
     "Reddit",
     "DEV.to",
     "Lobsters",
-    process.env.FIRECRAWL_API_KEY ? "Web (Firecrawl)" : process.env.TAVILY_API_KEY ? "Web (Tavily fallback)" : null
+    process.env.FIRECRAWL_API_KEY && process.env.TAVILY_API_KEY
+      ? "Web (Firecrawl + Tavily fallback)"
+      : process.env.FIRECRAWL_API_KEY
+        ? "Web (Firecrawl)"
+        : process.env.TAVILY_API_KEY
+          ? "Web (Tavily)"
+          : null
   ].filter(Boolean);
 
   if (!detailed) {
