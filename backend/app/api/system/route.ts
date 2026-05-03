@@ -10,7 +10,8 @@ export async function GET() {
       redisUrl: Boolean(process.env.REDIS_URL),
       minioEndpoint: Boolean(process.env.MINIO_ENDPOINT),
       anthropicApiKey: Boolean(process.env.ANTHROPIC_API_KEY),
-      githubToken: Boolean(process.env.GITHUB_TOKEN)
+      githubToken: Boolean(process.env.GITHUB_TOKEN),
+      firecrawlApiKey: Boolean(process.env.FIRECRAWL_API_KEY)
     }
   });
 }

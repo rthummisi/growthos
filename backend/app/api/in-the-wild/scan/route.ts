@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
     "Reddit",
     "DEV.to",
     "Lobsters",
-    process.env.TAVILY_API_KEY ? "Web (Tavily)" : null
+    process.env.FIRECRAWL_API_KEY ? "Web (Firecrawl)" : process.env.TAVILY_API_KEY ? "Web (Tavily fallback)" : null
   ].filter(Boolean);
 
   return json({ matches, signals, scannedAt: new Date().toISOString(), activeSources });
