@@ -6,6 +6,7 @@ import { Card } from "@frontend/components/ui/Card";
 import { Badge } from "@frontend/components/ui/Badge";
 import { Select } from "@frontend/components/ui/Select";
 import { apiGet, apiPost } from "@frontend/lib/api";
+import { QueueSuggestionButton } from "@frontend/components/actions/QueueSuggestionButton";
 
 interface WildMatch {
   id: string;
@@ -15,6 +16,13 @@ interface WildMatch {
   matchReason: string;
   draftReply: string;
   fetchedAt: string;
+  channelSlug: string;
+  opportunityScore: number;
+  urgency: "respond-now" | "today" | "this-week" | "backlog";
+  actionType: string;
+  actionTitle: string;
+  actionBody: string;
+  actionReasoning: string;
 }
 
 interface MarketSignal {
@@ -42,6 +50,20 @@ const PRIORITY_STYLES: Record<string, string> = {
   high: "bg-red-500/20 text-red-300",
   medium: "bg-amber-500/20 text-amber-300",
   low: "bg-zinc-700 text-zinc-400"
+};
+
+const URGENCY_STYLES: Record<WildMatch["urgency"], string> = {
+  "respond-now": "bg-red-500/20 text-red-300",
+  today: "bg-amber-500/20 text-amber-300",
+  "this-week": "bg-emerald-500/20 text-emerald-300",
+  backlog: "bg-zinc-700 text-zinc-300"
+};
+
+const URGENCY_LABELS: Record<WildMatch["urgency"], string> = {
+  "respond-now": "Respond Now",
+  today: "Today",
+  "this-week": "This Week",
+  backlog: "Backlog"
 };
 
 function timeAgo(iso: string): string {
@@ -232,7 +254,7 @@ export function InTheWildClient({
       {data && data.matches.length > 0 && (
         <div>
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">
-            Live Opportunities · {data.matches.length}
+            Opportunity Inbox · {data.matches.length}
           </h2>
           <div className="space-y-4">
             {data.matches.map((item) => (
@@ -244,6 +266,12 @@ export function InTheWildClient({
                         {item.source}
                       </span>
                       <span className="text-xs text-zinc-600">{timeAgo(item.fetchedAt)}</span>
+                      <Badge className={URGENCY_STYLES[item.urgency]}>
+                        {URGENCY_LABELS[item.urgency]}
+                      </Badge>
+                      <Badge className="bg-violet-500/20 text-violet-300">
+                        {item.opportunityScore}/100
+                      </Badge>
                     </div>
                     <a
                       href={item.url}
@@ -254,6 +282,19 @@ export function InTheWildClient({
                       {item.title}
                     </a>
                     <p className="mt-2 text-sm text-zinc-400">{item.matchReason}</p>
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                      <QueueSuggestionButton
+                        productId={productId}
+                        channelSlug={item.channelSlug}
+                        type={item.actionType}
+                        title={item.actionTitle}
+                        body={item.actionBody}
+                        reasoning={item.actionReasoning}
+                      />
+                      <span className="text-xs text-zinc-500">
+                        Queue as an approval-ready reply while the conversation is still live.
+                      </span>
+                    </div>
                     <ReplyBox reply={item.draftReply} />
                   </div>
                 </div>
