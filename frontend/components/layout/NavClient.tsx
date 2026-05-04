@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import type { Route } from "next";
 import { usePathname } from "next/navigation";
 import { Badge } from "@frontend/components/ui/Badge";
 import { ProductTour } from "@frontend/components/demo/ProductTour";
@@ -12,19 +13,20 @@ import { useAppStore } from "@frontend/lib/store";
 import { cn } from "@frontend/lib/utils";
 
 const items = [
-  ["Intake", "/intake"],
-  ["Opportunities", "/opportunities"],
-  ["Placements", "/placements"],
-  ["Approvals", "/approvals"],
-  ["Workspace", "/workspace"],
-  ["Assets", "/assets"],
-  ["Tracking", "/tracking"],
-  ["Scheduler", "/scheduler"],
-  ["Competitors", "/competitors"],
-  ["In the Wild", "/in-the-wild"],
-  ["Alerts", "/alerts"],
-  ["Launch", "/launch"],
-  ["Admin", "/admin"]
+  ["Intake", "/intake" as Route],
+  ["Opportunities", "/opportunities" as Route],
+  ["Placements", "/placements" as Route],
+  ["Approvals", "/approvals" as Route],
+  ["Workspace", "/workspace" as Route],
+  ["Assets", "/assets" as Route],
+  ["Playbook", "/playbook" as Route],
+  ["Tracking", "/tracking" as Route],
+  ["Scheduler", "/scheduler" as Route],
+  ["Competitors", "/competitors" as Route],
+  ["In the Wild", "/in-the-wild" as Route],
+  ["Alerts", "/alerts" as Route],
+  ["Launch", "/launch" as Route],
+  ["Admin", "/admin" as Route]
 ] as const;
 
 export function NavClient() {
