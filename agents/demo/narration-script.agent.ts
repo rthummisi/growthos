@@ -34,7 +34,7 @@ GrowthOS features to draw from when building the script:
 - Tracking: UTM-based closed-loop from clicks → signups → activations
 - Scheduler: per-channel cadence configuration
 - Competitors: channel presence heatmap + gap analysis across rivals
-- Brand Visibility: fair share-of-voice comparison (equal search depth per player), earned vs owned mentions, negation-aware sentiment, high-intent signal detection, and a trend chart showing SOV movement over time — results cached 1 hour
+- Brand Visibility: fair share-of-voice comparison (equal search depth per player), earned vs owned mentions, negation-aware sentiment, high-intent signal detection, SOV trend chart, and a Competitive Effectiveness Score (0-100) per player weighted across SOV 35% · Sentiment 30% · Intent 25% · Earned Ratio 10% — results cached 1 hour
 - In the Wild: live feed of GitHub Issues, Reddit, HN, SO threads where the product is the answer, with drafted replies
 - Alerts: viral spike detection with rapid-response options
 
