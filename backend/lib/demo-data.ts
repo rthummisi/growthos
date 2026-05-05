@@ -143,6 +143,35 @@ export function buildDemoVisibility(): VisibilityResult {
       }
     ],
     cachedAt: null,
+    effectiveness: [
+      {
+        name: "growthos",
+        isBrand: true,
+        score: 74,
+        sovPct: 43.5,
+        sentimentScore: 82,
+        intentScore: 71,
+        earnedRatio: 78
+      },
+      {
+        name: "posthog",
+        isBrand: false,
+        score: 61,
+        sovPct: 34.8,
+        sentimentScore: 68,
+        intentScore: 55,
+        earnedRatio: 91
+      },
+      {
+        name: "june",
+        isBrand: false,
+        score: 44,
+        sovPct: 21.7,
+        sentimentScore: 58,
+        intentScore: 38,
+        earnedRatio: 95
+      }
+    ],
     trend: [
       {
         snapshotAt: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString(),

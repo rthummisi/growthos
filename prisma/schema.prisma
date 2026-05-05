@@ -235,15 +235,16 @@ model MarketSignal {
 }
 
 model BrandVisibilitySnapshot {
-  id           String   @id @default(cuid())
-  productId    String
-  snapshotAt   DateTime @default(now())
-  summary      Json
-  shareOfVoice Json
-  sentiment    Json
-  intent       Json
-  signals      Json
-  mentions     Json
+  id            String   @id @default(cuid())
+  productId     String
+  snapshotAt    DateTime @default(now())
+  summary       Json
+  shareOfVoice  Json
+  sentiment     Json
+  intent        Json
+  signals       Json
+  mentions      Json
+  effectiveness Json?
 
   @@index([productId, snapshotAt])
 }

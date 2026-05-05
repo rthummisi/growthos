@@ -16,6 +16,7 @@ const EMPTY: VisibilityResult = {
   intent: { high: 0, medium: 0, low: 0 },
   signals: [],
   mentions: [],
+  effectiveness: [],
   cachedAt: null,
   trend: []
 };

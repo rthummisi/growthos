@@ -161,6 +161,51 @@ export function BrandVisibilityDashboard({
         </Card>
       </div>
 
+      {visibility.effectiveness.length > 0 ? (
+        <Card className="space-y-5">
+          <div>
+            <h2 className="text-lg font-semibold">Competitive Effectiveness</h2>
+            <p className="mt-1 text-sm text-zinc-400">
+              Composite score (0–100) weighted across Share of Voice (35%), Sentiment (30%), Intent Quality (25%), and Earned Ratio (10%).
+              Computed from the same equal-depth searches as SOV — no home-field advantage.
+            </p>
+          </div>
+          <div className="space-y-4">
+            {visibility.effectiveness.map((entry, i) => (
+              <div key={entry.name} className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-block h-2.5 w-2.5 rounded-full ${PLAYER_COLORS[i % PLAYER_COLORS.length]}`} />
+                    <span className="font-semibold text-zinc-100">{entry.name}</span>
+                    {entry.isBrand ? <Badge className="bg-sky-500/20 text-sky-300 text-[10px]">your brand</Badge> : null}
+                  </div>
+                  <span className="text-2xl font-bold text-zinc-100">{entry.score}<span className="ml-0.5 text-sm font-normal text-zinc-500">/100</span></span>
+                </div>
+                <div className="h-1.5 w-full rounded-full bg-zinc-900">
+                  <div
+                    className={`h-1.5 rounded-full ${PLAYER_COLORS[i % PLAYER_COLORS.length]}`}
+                    style={{ width: `${entry.score}%` }}
+                  />
+                </div>
+                <div className="grid grid-cols-4 gap-2 pt-1">
+                  {[
+                    { label: "Share of Voice", value: `${entry.sovPct}%` },
+                    { label: "Sentiment", value: `${entry.sentimentScore}` },
+                    { label: "Intent Quality", value: `${entry.intentScore}` },
+                    { label: "Earned Ratio", value: `${entry.earnedRatio}%` }
+                  ].map(({ label, value }) => (
+                    <div key={label} className="rounded-lg bg-zinc-900 px-3 py-2">
+                      <div className="text-[10px] uppercase tracking-wider text-zinc-500">{label}</div>
+                      <div className="mt-0.5 text-sm font-semibold text-zinc-200">{value}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      ) : null}
+
       {visibility.trend.length > 1 ? (
         <Card className="space-y-4">
           <h2 className="text-lg font-semibold">Share of Voice Trend</h2>

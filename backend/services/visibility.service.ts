@@ -3,7 +3,7 @@ import { ProductUnderstandingAgent } from "@agents/product/product-understanding
 import { firecrawlSearch } from "@agents/_core/scraper";
 import { prisma } from "@backend/lib/prisma";
 import type { ProductProfile } from "@shared/types/agent.types";
-import type { VisibilityMention, VisibilityResult, VisibilityTrendPoint } from "@shared/types/visibility.types";
+import type { EffectivenessEntry, VisibilityMention, VisibilityResult, VisibilityTrendPoint } from "@shared/types/visibility.types";
 
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 const TREND_WINDOW = 7;               // last N snapshots shown in trend
@@ -84,6 +84,56 @@ function scoreMention(source: string, sentiment: VisibilityMention["sentiment"],
   return Math.min(100, sourceWeight + sentimentWeight + intentWeight + ownershipWeight);
 }
 
+type SearchResult = { url: string; title: string; description?: string };
+
+function analyseResults(
+  results: SearchResult[],
+  ownedRoots: string[]
+): { positive: number; neutral: number; negative: number; high: number; medium: number; low: number; earned: number; total: number } {
+  let positive = 0, neutral = 0, negative = 0, high = 0, medium = 0, low = 0, earned = 0;
+  for (const r of results) {
+    if (!r.url) continue;
+    const text = `${r.title} ${r.description ?? ""}`;
+    const s = classifySentiment(text);
+    const intent = classifyIntent(text);
+    const owned = ownedRoots.some((root) => r.url.toLowerCase().includes(root.toLowerCase()));
+    if (s === "positive") positive++; else if (s === "negative") negative++; else neutral++;
+    if (intent === "high") high++; else if (intent === "medium") medium++; else low++;
+    if (!owned) earned++;
+  }
+  return { positive, neutral, negative, high, medium, low, earned, total: results.length };
+}
+
+function computeEffectiveness(
+  name: string,
+  isBrand: boolean,
+  sovPct: number,
+  analysis: ReturnType<typeof analyseResults>
+): EffectivenessEntry {
+  const { total, positive, negative, high, earned } = analysis;
+  const sentimentScore = total === 0 ? 50 : Math.round(((positive - negative * 0.5) / total) * 100);
+  const intentScore = total === 0 ? 0 : Math.round((high / total) * 100);
+  const earnedRatio = total === 0 ? 100 : Math.round((earned / total) * 100);
+
+  // Weighted composite: SOV 35% · Sentiment 30% · Intent 25% · Earned 10%
+  const score = Math.round(
+    (sovPct * 0.35) +
+    (Math.max(0, sentimentScore) * 0.30) +
+    (intentScore * 0.25) +
+    (earnedRatio * 0.10)
+  );
+
+  return {
+    name,
+    isBrand,
+    score: Math.min(100, Math.max(0, score)),
+    sovPct: Number(sovPct.toFixed(1)),
+    sentimentScore: Math.min(100, Math.max(0, sentimentScore)),
+    intentScore: Math.min(100, Math.max(0, intentScore)),
+    earnedRatio: Math.min(100, Math.max(0, earnedRatio))
+  };
+}
+
 async function buildProductProfile(productId: string) {
   const product = await prisma.product.findUniqueOrThrow({ where: { id: productId } });
   const profile: ProductProfile =
@@ -131,6 +181,7 @@ export async function buildBrandVisibility(productId: string): Promise<Visibilit
       intent: cached.intent as unknown as VisibilityResult["intent"],
       signals: cached.signals as unknown as string[],
       mentions: cached.mentions as unknown as VisibilityMention[],
+      effectiveness: cached.effectiveness as unknown as EffectivenessEntry[] ?? [],
       cachedAt: cached.snapshotAt.toISOString(),
       trend
     };
@@ -144,7 +195,7 @@ export async function buildBrandVisibility(productId: string): Promise<Visibilit
   const categoryQuery = [profile.plgWedge, ...profile.useCases.slice(0, 2)].join(" ");
 
   // Equal limit (10) for brand and all competitors so SOV is a fair comparison.
-  // Category search feeds the mentions feed only — not counted in SOV.
+  // Category search feeds the mentions feed only — not counted in SOV or effectiveness.
   const [brandResults, categoryResults, ...competitorResults] = await Promise.all([
     firecrawlSearch({ query: `"${brandName}" OR "${product.description.slice(0, 60)}"`, limit: 10, sources: ["web", "news"] }),
     firecrawlSearch({ query: `${categoryQuery} developer tool`, limit: 8, sources: ["web", "news"] }),
@@ -156,7 +207,7 @@ export async function buildBrandVisibility(productId: string): Promise<Visibilit
   const ownedRoots = [domainRoot(product.url), product.githubUrl ? domainRoot(product.githubUrl) : null].filter(Boolean) as string[];
   const mentionMap = new Map<string, VisibilityMention>();
 
-  function addResults(results: Array<{ url: string; title: string; description?: string }>, competitorName?: string | null) {
+  function addResults(results: SearchResult[], competitorName?: string | null) {
     for (const result of results) {
       if (!result.url) continue;
       const source = detectSource(result.url);
@@ -229,7 +280,19 @@ export async function buildBrandVisibility(productId: string): Promise<Visibilit
     percentage: Number(((row.mentions / totalVoice) * 100).toFixed(1))
   }));
 
-  // Persist snapshot for caching and trend history
+  // Compute competitive effectiveness scores from each player's raw search results
+  const brandAnalysis = analyseResults(brandResults, ownedRoots);
+  const brandSovPct = Number(((brandResults.length / totalVoice) * 100).toFixed(1));
+  const effectiveness: EffectivenessEntry[] = [
+    computeEffectiveness(brandName, true, brandSovPct, brandAnalysis),
+    ...competitorNames.map((name, index) => {
+      const rows = competitorResults[index] ?? [];
+      const sovPct = Number(((rows.length / totalVoice) * 100).toFixed(1));
+      // Competitors have no owned roots — all their results are earned from their perspective
+      return computeEffectiveness(name, false, sovPct, analyseResults(rows, []));
+    })
+  ].sort((a, b) => b.score - a.score);
+
   await prisma.brandVisibilitySnapshot.create({
     data: {
       productId,
@@ -238,7 +301,8 @@ export async function buildBrandVisibility(productId: string): Promise<Visibilit
       sentiment: sentiment as object,
       intent: intent as object,
       signals: signals as unknown as object[],
-      mentions: mentions as unknown as object[]
+      mentions: mentions as unknown as object[],
+      effectiveness: effectiveness as unknown as object[]
     }
   });
 
@@ -252,6 +316,7 @@ export async function buildBrandVisibility(productId: string): Promise<Visibilit
     intent,
     signals,
     mentions,
+    effectiveness,
     cachedAt: null,
     trend: freshTrend
   };
