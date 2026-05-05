@@ -5,23 +5,12 @@ import { useRouter } from "next/navigation";
 import { Card } from "@frontend/components/ui/Card";
 import { Badge } from "@frontend/components/ui/Badge";
 import { Select } from "@frontend/components/ui/Select";
+import type { VisibilityResult } from "@shared/types/visibility.types";
 
 interface ProductOption {
   id: string;
   url: string;
   description: string;
-}
-
-interface VisibilityMention {
-  url: string;
-  title: string;
-  snippet: string;
-  source: string;
-  sentiment: "positive" | "neutral" | "negative";
-  intent: "high" | "medium" | "low";
-  visibilityScore: number;
-  owned: boolean;
-  competitorName?: string | null;
 }
 
 const SENTIMENT_STYLES = {
@@ -36,6 +25,18 @@ const INTENT_STYLES = {
   low: "bg-zinc-700 text-zinc-300"
 } as const;
 
+const PLAYER_COLORS = [
+  "bg-emerald-400",
+  "bg-violet-400",
+  "bg-amber-400",
+  "bg-sky-400"
+];
+
+function formatCachedAt(iso: string) {
+  const diff = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  return diff < 2 ? "just now" : `${diff}m ago`;
+}
+
 export function BrandVisibilityDashboard({
   productId,
   products,
@@ -43,34 +44,26 @@ export function BrandVisibilityDashboard({
 }: {
   productId?: string;
   products: ProductOption[];
-  visibility: {
-    product: { brandName: string } | null;
-    summary: {
-      totalMentions: number;
-      earnedMentions: number;
-      ownedMentions: number;
-      shareLeader: string;
-      shareLeaderMentions: number;
-      highIntentMentions: number;
-      positiveMentions: number;
-      negativeMentions: number;
-    } | null;
-    shareOfVoice: Array<{ name: string; mentions: number; percentage: number }>;
-    sentiment: { positive: number; neutral: number; negative: number };
-    intent: { high: number; medium: number; low: number };
-    signals: string[];
-    mentions: VisibilityMention[];
-  };
+  visibility: VisibilityResult;
 }) {
   const router = useRouter();
-  const activeProduct = products.find((product) => product.id === productId) ?? products[0];
+  const activeProduct = products.find((p) => p.id === productId) ?? products[0];
+
+  const playerNames = visibility.shareOfVoice.map((row) => row.name);
 
   return (
     <div className="space-y-6">
       <Card>
         <div className="flex items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold">Brand Visibility</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-semibold">Brand Visibility</h1>
+              {visibility.cachedAt ? (
+                <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400">
+                  cached {formatCachedAt(visibility.cachedAt)}
+                </span>
+              ) : null}
+            </div>
             <p className="mt-2 text-sm text-zinc-400">
               Track share of voice, earned mentions, sentiment quality, and market conversations around your brand and competitors.
             </p>
@@ -81,9 +74,9 @@ export function BrandVisibilityDashboard({
               onChange={(event) => router.push(`/visibility?productId=${event.target.value}` as Route)}
               className="min-w-72"
             >
-              {products.map((product) => (
-                <option key={product.id} value={product.id}>
-                  {new URL(product.url).hostname}
+              {products.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {(() => { try { return new URL(p.url).hostname; } catch { return p.url; } })()}
                 </option>
               ))}
             </Select>
@@ -120,7 +113,7 @@ export function BrandVisibilityDashboard({
         <Card className="space-y-4">
           <h2 className="text-lg font-semibold">Share of Voice</h2>
           <div className="space-y-3">
-            {visibility.shareOfVoice.map((row) => (
+            {visibility.shareOfVoice.map((row, i) => (
               <div key={row.name}>
                 <div className="mb-1 flex items-center justify-between text-sm">
                   <span className="font-medium text-zinc-200">{row.name}</span>
@@ -128,7 +121,7 @@ export function BrandVisibilityDashboard({
                 </div>
                 <div className="h-2 rounded-full bg-zinc-900">
                   <div
-                    className="h-2 rounded-full bg-emerald-400"
+                    className={`h-2 rounded-full ${PLAYER_COLORS[i % PLAYER_COLORS.length]}`}
                     style={{ width: `${Math.max(6, row.percentage)}%` }}
                   />
                 </div>
@@ -168,6 +161,48 @@ export function BrandVisibilityDashboard({
         </Card>
       </div>
 
+      {visibility.trend.length > 1 ? (
+        <Card className="space-y-4">
+          <h2 className="text-lg font-semibold">Share of Voice Trend</h2>
+          <p className="text-sm text-zinc-400">
+            SOV % across the last {visibility.trend.length} snapshots — each bar is one refresh.
+          </p>
+          <div className="space-y-4">
+            {playerNames.map((name, colorIdx) => {
+              const dataPoints = visibility.trend.map((snap) => {
+                const row = snap.shareOfVoice.find((r) => r.name === name);
+                return row?.percentage ?? 0;
+              });
+              const max = Math.max(...dataPoints, 1);
+              return (
+                <div key={name}>
+                  <div className="mb-2 flex items-center gap-2 text-sm">
+                    <span className={`inline-block h-2.5 w-2.5 rounded-full ${PLAYER_COLORS[colorIdx % PLAYER_COLORS.length]}`} />
+                    <span className="font-medium text-zinc-200">{name}</span>
+                  </div>
+                  <div className="flex h-10 items-end gap-1">
+                    {dataPoints.map((pct, i) => (
+                      <div key={i} className="flex flex-1 flex-col items-center gap-1">
+                        <div
+                          className={`w-full rounded-t ${PLAYER_COLORS[colorIdx % PLAYER_COLORS.length]} opacity-80`}
+                          style={{ height: `${Math.max(4, (pct / max) * 40)}px` }}
+                          title={`${pct}%`}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-1 flex gap-1">
+                    {dataPoints.map((pct, i) => (
+                      <div key={i} className="flex-1 text-center text-[10px] text-zinc-600">{pct}%</div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      ) : null}
+
       <div className="space-y-4">
         <h2 className="text-lg font-semibold">Mentions Feed</h2>
         {visibility.mentions.map((mention) => (
@@ -178,8 +213,12 @@ export function BrandVisibilityDashboard({
                 <Badge className={SENTIMENT_STYLES[mention.sentiment]}>{mention.sentiment}</Badge>
                 <Badge className={INTENT_STYLES[mention.intent]}>{mention.intent} intent</Badge>
                 <Badge className="bg-violet-500/20 text-violet-300">{mention.visibilityScore}/100</Badge>
-                {mention.owned ? <Badge className="bg-sky-500/20 text-sky-300">owned</Badge> : <Badge className="bg-emerald-500/20 text-emerald-300">earned</Badge>}
-                {mention.competitorName ? <Badge className="bg-amber-500/20 text-amber-300">competitor: {mention.competitorName}</Badge> : null}
+                {mention.owned
+                  ? <Badge className="bg-sky-500/20 text-sky-300">owned</Badge>
+                  : <Badge className="bg-emerald-500/20 text-emerald-300">earned</Badge>}
+                {mention.competitorName
+                  ? <Badge className="bg-amber-500/20 text-amber-300">competitor: {mention.competitorName}</Badge>
+                  : null}
               </div>
               <a href={mention.url} target="_blank" rel="noopener noreferrer" className="block font-semibold hover:text-violet-300 hover:underline">
                 {mention.title}

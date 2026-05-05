@@ -1,11 +1,24 @@
 import { apiGet } from "@frontend/lib/api";
 import { BrandVisibilityDashboard } from "@frontend/components/visibility/BrandVisibilityDashboard";
+import type { VisibilityResult } from "@shared/types/visibility.types";
 
 interface ProductOption {
   id: string;
   url: string;
   description: string;
 }
+
+const EMPTY: VisibilityResult = {
+  product: null,
+  summary: null,
+  shareOfVoice: [],
+  sentiment: { positive: 0, neutral: 0, negative: 0 },
+  intent: { high: 0, medium: 0, low: 0 },
+  signals: [],
+  mentions: [],
+  cachedAt: null,
+  trend: []
+};
 
 export default async function VisibilityPage({
   searchParams
@@ -16,51 +29,8 @@ export default async function VisibilityPage({
   const products = await apiGet<ProductOption[]>("/products").catch(() => []);
   const productId = resolved.productId ?? products[0]?.id;
   const visibility = productId
-    ? await apiGet<{
-        product: { brandName: string } | null;
-        summary: {
-          totalMentions: number;
-          earnedMentions: number;
-          ownedMentions: number;
-          shareLeader: string;
-          shareLeaderMentions: number;
-          highIntentMentions: number;
-          positiveMentions: number;
-          negativeMentions: number;
-        } | null;
-        shareOfVoice: Array<{ name: string; mentions: number; percentage: number }>;
-        sentiment: { positive: number; neutral: number; negative: number };
-        intent: { high: number; medium: number; low: number };
-        signals: string[];
-        mentions: Array<{
-          url: string;
-          title: string;
-          snippet: string;
-          source: string;
-          sentiment: "positive" | "neutral" | "negative";
-          intent: "high" | "medium" | "low";
-          visibilityScore: number;
-          owned: boolean;
-          competitorName?: string | null;
-        }>;
-      }>(`/visibility?productId=${productId}`).catch(() => ({
-        product: null,
-        summary: null,
-        shareOfVoice: [],
-        sentiment: { positive: 0, neutral: 0, negative: 0 },
-        intent: { high: 0, medium: 0, low: 0 },
-        signals: [],
-        mentions: []
-      }))
-    : {
-        product: null,
-        summary: null,
-        shareOfVoice: [],
-        sentiment: { positive: 0, neutral: 0, negative: 0 },
-        intent: { high: 0, medium: 0, low: 0 },
-        signals: [],
-        mentions: []
-      };
+    ? await apiGet<VisibilityResult>(`/visibility?productId=${productId}`).catch(() => EMPTY)
+    : EMPTY;
 
   return (
     <BrandVisibilityDashboard

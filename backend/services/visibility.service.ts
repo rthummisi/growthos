@@ -3,18 +3,23 @@ import { ProductUnderstandingAgent } from "@agents/product/product-understanding
 import { firecrawlSearch } from "@agents/_core/scraper";
 import { prisma } from "@backend/lib/prisma";
 import type { ProductProfile } from "@shared/types/agent.types";
+import type { VisibilityMention, VisibilityResult, VisibilityTrendPoint } from "@shared/types/visibility.types";
 
-interface VisibilityMention {
-  url: string;
-  title: string;
-  snippet: string;
-  source: string;
-  sentiment: "positive" | "neutral" | "negative";
-  intent: "high" | "medium" | "low";
-  visibilityScore: number;
-  owned: boolean;
-  competitorName?: string | null;
-}
+const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+const TREND_WINDOW = 7;               // last N snapshots shown in trend
+
+const NEGATIONS = new Set([
+  "not", "no", "never", "hardly", "barely",
+  "doesnt", "dont", "isnt", "arent", "wasnt", "werent", "cant", "wont", "shouldnt"
+]);
+const POSITIVE_WORDS = new Set([
+  "love", "great", "best", "useful", "helpful", "fast", "excellent",
+  "recommend", "favorite", "amazing", "awesome", "perfect", "good"
+]);
+const NEGATIVE_WORDS = new Set([
+  "bad", "broken", "avoid", "hate", "terrible", "spam", "confusing",
+  "buggy", "worse", "worst", "awful", "poor", "useless"
+]);
 
 function detectSource(url: string) {
   try {
@@ -44,16 +49,24 @@ function domainRoot(input: string) {
 }
 
 function classifySentiment(text: string): VisibilityMention["sentiment"] {
-  const normalized = text.toLowerCase();
-  if (/(love|great|best|useful|helpful|fast|excellent|recommend|favorite)/.test(normalized)) return "positive";
-  if (/(bad|broken|avoid|hate|terrible|spam|confusing|buggy|worse)/.test(normalized)) return "negative";
+  const words = text.toLowerCase().split(/\W+/);
+  let score = 0;
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i];
+    const prev = i > 0 ? words[i - 1] : "";
+    const negated = NEGATIONS.has(prev);
+    if (POSITIVE_WORDS.has(word)) score += negated ? -1 : 1;
+    if (NEGATIVE_WORDS.has(word)) score += negated ? 1 : -1;
+  }
+  if (score > 0) return "positive";
+  if (score < 0) return "negative";
   return "neutral";
 }
 
 function classifyIntent(text: string): VisibilityMention["intent"] {
   const normalized = text.toLowerCase();
   if (/(looking for|need|recommend|how do i|what should i use|stuck|trying to find|best tool)/.test(normalized)) return "high";
-  if (/(comparison|review|alternatives|vs\\.?|workflow|stack)/.test(normalized)) return "medium";
+  if (/(comparison|review|alternatives|vs\.?|workflow|stack)/.test(normalized)) return "medium";
   return "low";
 }
 
@@ -94,7 +107,35 @@ async function buildProductProfile(productId: string) {
   return { product, profile };
 }
 
-export async function buildBrandVisibility(productId: string) {
+export async function buildBrandVisibility(productId: string): Promise<VisibilityResult> {
+  // Return cached snapshot if it is fresh enough
+  const cached = await prisma.brandVisibilitySnapshot.findFirst({
+    where: { productId },
+    orderBy: { snapshotAt: "desc" }
+  });
+
+  const trend = await loadTrend(productId);
+
+  if (cached && Date.now() - cached.snapshotAt.getTime() < CACHE_TTL_MS) {
+    const product = await prisma.product.findUniqueOrThrow({ where: { id: productId } });
+    return {
+      product: {
+        id: product.id,
+        url: product.url,
+        description: product.description,
+        brandName: domainRoot(product.url)
+      },
+      summary: cached.summary as unknown as VisibilityResult["summary"],
+      shareOfVoice: cached.shareOfVoice as unknown as VisibilityResult["shareOfVoice"],
+      sentiment: cached.sentiment as unknown as VisibilityResult["sentiment"],
+      intent: cached.intent as unknown as VisibilityResult["intent"],
+      signals: cached.signals as unknown as string[],
+      mentions: cached.mentions as unknown as VisibilityMention[],
+      cachedAt: cached.snapshotAt.toISOString(),
+      trend
+    };
+  }
+
   const { product, profile } = await buildProductProfile(productId);
   const competitors = await new CompetitorAgent().run({ productProfile: profile });
 
@@ -102,23 +143,13 @@ export async function buildBrandVisibility(productId: string) {
   const competitorNames = competitors.competitors.slice(0, 3).map((entry) => entry.name);
   const categoryQuery = [profile.plgWedge, ...profile.useCases.slice(0, 2)].join(" ");
 
+  // Equal limit (10) for brand and all competitors so SOV is a fair comparison.
+  // Category search feeds the mentions feed only — not counted in SOV.
   const [brandResults, categoryResults, ...competitorResults] = await Promise.all([
-    firecrawlSearch({
-      query: `"${brandName}" OR "${product.description.slice(0, 60)}"`,
-      limit: 10,
-      sources: ["web", "news"]
-    }),
-    firecrawlSearch({
-      query: `${categoryQuery} developer tool`,
-      limit: 8,
-      sources: ["web", "news"]
-    }),
+    firecrawlSearch({ query: `"${brandName}" OR "${product.description.slice(0, 60)}"`, limit: 10, sources: ["web", "news"] }),
+    firecrawlSearch({ query: `${categoryQuery} developer tool`, limit: 8, sources: ["web", "news"] }),
     ...competitorNames.map((name) =>
-      firecrawlSearch({
-        query: `"${name}" developer tool`,
-        limit: 6,
-        sources: ["web", "news"]
-      })
+      firecrawlSearch({ query: `"${name}" developer tool`, limit: 10, sources: ["web", "news"] })
     )
   ]);
 
@@ -137,17 +168,7 @@ export async function buildBrandVisibility(productId: string) {
       const visibilityScore = scoreMention(source, sentiment, intent, owned);
       const existing = mentionMap.get(result.url);
       if (!existing || existing.visibilityScore < visibilityScore) {
-        mentionMap.set(result.url, {
-          url: result.url,
-          title: result.title,
-          snippet,
-          source,
-          sentiment,
-          intent,
-          visibilityScore,
-          owned,
-          competitorName: competitorName ?? null
-        });
+        mentionMap.set(result.url, { url: result.url, title: result.title, snippet, source, sentiment, intent, visibilityScore, owned, competitorName: competitorName ?? null });
       }
     }
   }
@@ -161,28 +182,23 @@ export async function buildBrandVisibility(productId: string) {
     .slice(0, 20);
 
   const sentiment = mentions.reduce(
-    (acc, mention) => {
-      acc[mention.sentiment] += 1;
-      return acc;
-    },
+    (acc, m) => { acc[m.sentiment] += 1; return acc; },
     { positive: 0, neutral: 0, negative: 0 }
   );
 
   const intent = mentions.reduce(
-    (acc, mention) => {
-      acc[mention.intent] += 1;
-      return acc;
-    },
+    (acc, m) => { acc[m.intent] += 1; return acc; },
     { high: 0, medium: 0, low: 0 }
   );
 
+  // SOV uses only the dedicated per-entity search counts — equal footing for brand and competitors.
   const shareOfVoice = [
-    { name: brandName, mentions: brandResults.length + categoryResults.filter((row) => row.title.toLowerCase().includes(brandName.toLowerCase())).length },
+    { name: brandName, mentions: brandResults.length },
     ...competitorNames.map((name, index) => ({ name, mentions: competitorResults[index]?.length ?? 0 }))
   ].sort((a, b) => b.mentions - a.mentions);
 
   const totalVoice = Math.max(1, shareOfVoice.reduce((sum, row) => sum + row.mentions, 0));
-  const ownedMentions = mentions.filter((mention) => mention.owned).length;
+  const ownedMentions = mentions.filter((m) => m.owned).length;
   const earnedMentions = mentions.length - ownedMentions;
 
   const signals = [
@@ -197,30 +213,60 @@ export async function buildBrandVisibility(productId: string) {
       : "No major negative visibility spikes were detected in the sampled mentions."
   ];
 
+  const summary = {
+    totalMentions: mentions.length,
+    earnedMentions,
+    ownedMentions,
+    shareLeader: shareOfVoice[0]?.name ?? brandName,
+    shareLeaderMentions: shareOfVoice[0]?.mentions ?? 0,
+    highIntentMentions: intent.high,
+    positiveMentions: sentiment.positive,
+    negativeMentions: sentiment.negative
+  };
+
+  const shareOfVoiceWithPct = shareOfVoice.map((row) => ({
+    ...row,
+    percentage: Number(((row.mentions / totalVoice) * 100).toFixed(1))
+  }));
+
+  // Persist snapshot for caching and trend history
+  await prisma.brandVisibilitySnapshot.create({
+    data: {
+      productId,
+      summary: summary as object,
+      shareOfVoice: shareOfVoiceWithPct as unknown as object[],
+      sentiment: sentiment as object,
+      intent: intent as object,
+      signals: signals as unknown as object[],
+      mentions: mentions as unknown as object[]
+    }
+  });
+
+  const freshTrend = await loadTrend(productId);
+
   return {
-    product: {
-      id: product.id,
-      url: product.url,
-      description: product.description,
-      brandName
-    },
-    summary: {
-      totalMentions: mentions.length,
-      earnedMentions,
-      ownedMentions,
-      shareLeader: shareOfVoice[0]?.name ?? brandName,
-      shareLeaderMentions: shareOfVoice[0]?.mentions ?? 0,
-      highIntentMentions: intent.high,
-      positiveMentions: sentiment.positive,
-      negativeMentions: sentiment.negative
-    },
-    shareOfVoice: shareOfVoice.map((row) => ({
-      ...row,
-      percentage: Number(((row.mentions / totalVoice) * 100).toFixed(1))
-    })),
+    product: { id: product.id, url: product.url, description: product.description, brandName },
+    summary,
+    shareOfVoice: shareOfVoiceWithPct,
     sentiment,
     intent,
     signals,
-    mentions
+    mentions,
+    cachedAt: null,
+    trend: freshTrend
   };
+}
+
+async function loadTrend(productId: string): Promise<VisibilityTrendPoint[]> {
+  const snapshots = await prisma.brandVisibilitySnapshot.findMany({
+    where: { productId },
+    orderBy: { snapshotAt: "asc" },
+    take: TREND_WINDOW,
+    select: { snapshotAt: true, shareOfVoice: true }
+  });
+
+  return snapshots.map((snap) => ({
+    snapshotAt: snap.snapshotAt.toISOString(),
+    shareOfVoice: (snap.shareOfVoice as Array<{ name: string; percentage: number }>).map(({ name, percentage }) => ({ name, percentage }))
+  }));
 }
