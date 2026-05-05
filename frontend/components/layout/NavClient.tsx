@@ -23,6 +23,7 @@ const items = [
   ["Tracking", "/tracking" as Route],
   ["Scheduler", "/scheduler" as Route],
   ["Competitors", "/competitors" as Route],
+  ["Visibility", "/visibility" as Route],
   ["In the Wild", "/in-the-wild" as Route],
   ["Alerts", "/alerts" as Route],
   ["Launch", "/launch" as Route],

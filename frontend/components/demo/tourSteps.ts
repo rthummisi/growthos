@@ -111,6 +111,15 @@ export const TOUR_STEPS: TourStep[] = [
     dwellMs: 6000
   },
   {
+    id: "visibility",
+    navLabel: "Visibility",
+    page: "/visibility" as Route,
+    title: "Visibility — How Visible Is The Brand?",
+    description: "Brand Visibility tracks share of voice, earned mentions, owned mentions, sentiment, and high-intent conversation quality across the market. It tells you where the brand is being discussed, not just where the product could reply.",
+    narration: "Visibility is the market-awareness layer. This is not the same as In the Wild. In the Wild asks where your product should jump in right now. Visibility asks how present your brand is in the broader market conversation. GrowthOS compares your mention volume to competitors, separates earned from owned mentions, scores the quality of those conversations, and highlights high-intent discussions that should feed back into action. This is how you see whether you are actually becoming visible in the category, not just publishing more content.",
+    dwellMs: 7000
+  },
+  {
     id: "in-the-wild",
     navLabel: "In the Wild",
     page: "/in-the-wild",
