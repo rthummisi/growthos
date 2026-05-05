@@ -115,9 +115,9 @@ export const TOUR_STEPS: TourStep[] = [
     navLabel: "Visibility",
     page: "/visibility" as Route,
     title: "Visibility — How Visible Is The Brand?",
-    description: "Brand Visibility tracks share of voice, earned mentions, owned mentions, sentiment, and high-intent conversation quality across the market. It tells you where the brand is being discussed, not just where the product could reply.",
-    narration: "Visibility is the market-awareness layer. This is not the same as In the Wild. In the Wild asks where your product should jump in right now. Visibility asks how present your brand is in the broader market conversation. GrowthOS compares your mention volume to competitors, separates earned from owned mentions, scores the quality of those conversations, and highlights high-intent discussions that should feed back into action. This is how you see whether you are actually becoming visible in the category, not just publishing more content.",
-    dwellMs: 7000
+    description: "Brand Visibility tracks share of voice over time, earned versus owned mentions, sentiment with negation handling, and high-intent conversation quality across web, news, and community surfaces. Results are cached so every page load is instant after the first fetch, and the trend chart shows whether your share is actually growing.",
+    narration: "Visibility is the market-awareness layer. GrowthOS runs parallel searches for your brand and each competitor at equal depth, so share of voice is a fair comparison — not a number where you get a structural head start. It separates earned mentions from owned ones, scores sentiment in a way that isn't fooled by phrases like 'not helpful', and surfaces the high-intent conversations that should feed back into In the Wild or a Playbook action. The trend panel shows your share of voice across the last several refreshes, so you can see whether you are actually becoming more visible in the category over time, or just publishing more content that isn't landing. Results are cached for an hour, so the page is instant on repeat visits.",
+    dwellMs: 8000
   },
   {
     id: "in-the-wild",
