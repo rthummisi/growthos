@@ -26,6 +26,7 @@ CRITICAL RULES:
 - body for answer-reply: a complete, helpful answer with a natural product mention
 - body for newsletter-submission: the actual pitch email text
 - body for awesome-list-entry: the markdown line entry + brief PR body
+- body for short-form-video: a full creative brief with hook, spoken beats, visual payoff, and CTA for a 20-40 second vertical video
 - reasoning: specific viral mechanism for this product on this channel — not generic
 - viralityScore: how likely this spreads within the channel audience (0-100)
 - effortScore: implementation effort — 0=trivial, 100=very hard
@@ -51,6 +52,33 @@ export class PlacementStrategyAgent extends BaseAgent<
 > {
   name = "placement-strategy";
 
+  private fallbackSuggestions(input: {
+    productProfile: ProductProfile;
+    channelScores: ChannelFitScore[];
+    limit?: number;
+  }): PlacementSuggestionOutput[] {
+    const limit = input.limit ?? 10;
+    return input.channelScores.slice(0, limit).map((channel, index) => ({
+      channelSlug: channel.channelSlug,
+      type: channel.suggestedTypes[0],
+      title:
+        channel.channelSlug === "youtube-shorts" ||
+        channel.channelSlug === "instagram-reels" ||
+        channel.channelSlug === "tiktok"
+          ? `${channel.channelSlug} short-form demo for ${input.productProfile.productId}`
+          : `${channel.channelSlug} launch angle for ${input.productProfile.productId}`,
+      body:
+        channel.suggestedTypes[0] === "short-form-video"
+          ? `Hook: Show the pain in the first 2 seconds.\nDemo: Walk through ${input.productProfile.useCases[0].toLowerCase()} in three visual beats.\nPayoff: Show the result state and why developers would share it.\nCTA: Save this clip and try the product today.`
+          : `Ship a ${channel.suggestedTypes[0]} on ${channel.channelSlug} that demonstrates ${input.productProfile.useCases[0].toLowerCase()} and closes with a concrete next step to try the product.`,
+      reasoning: channel.fitReason,
+      viralityScore: Math.max(50, channel.fitScore - 2),
+      effortScore: 30 + index * 3,
+      audienceFit: channel.fitScore,
+      timeToValue: 7 + index
+    }));
+  }
+
   async run(input: { productProfile: ProductProfile; channelScores: ChannelFitScore[]; limit?: number }) {
     const limit = input.limit ?? 10;
     const topChannels = input.channelScores.slice(0, limit);
@@ -71,24 +99,32 @@ ${channelList}
 
 Generate one fully-written, production-ready placement per channel.`;
 
-    const raw = await this.callClaude(SYSTEM_PROMPT, userPrompt, 8_000);
-    const jsonMatch = raw.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) throw new Error("PlacementStrategyAgent: no JSON array in Claude response");
+    try {
+      const raw = await this.callClaude(SYSTEM_PROMPT, userPrompt, 8_000);
+      const jsonMatch = raw.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) {
+        return this.fallbackSuggestions(input);
+      }
 
-    const rows = JSON.parse(jsonMatch[0]) as unknown[];
+      const rows = JSON.parse(jsonMatch[0]) as unknown[];
 
-    return rows
-      .map((row) => {
-        const parsed = rowSchema.safeParse(row);
-        if (!parsed.success) return null;
-        const channelScore = topChannels.find((ch) => ch.channelSlug === parsed.data.channelSlug);
-        return {
-          ...parsed.data,
-          channelSlug: parsed.data.channelSlug as PlacementSuggestionOutput["channelSlug"],
-          type: parsed.data.type as PlacementSuggestionOutput["type"],
-          audienceFit: channelScore?.fitScore ?? parsed.data.audienceFit
-        };
-      })
-      .filter((item): item is PlacementSuggestionOutput => item !== null);
+      const parsedRows = rows
+        .map((row) => {
+          const parsed = rowSchema.safeParse(row);
+          if (!parsed.success) return null;
+          const channelScore = topChannels.find((ch) => ch.channelSlug === parsed.data.channelSlug);
+          return {
+            ...parsed.data,
+            channelSlug: parsed.data.channelSlug as PlacementSuggestionOutput["channelSlug"],
+            type: parsed.data.type as PlacementSuggestionOutput["type"],
+            audienceFit: channelScore?.fitScore ?? parsed.data.audienceFit
+          };
+        })
+        .filter((item): item is PlacementSuggestionOutput => item !== null);
+
+      return parsedRows.length > 0 ? parsedRows : this.fallbackSuggestions(input);
+    } catch {
+      return this.fallbackSuggestions(input);
+    }
   }
 }

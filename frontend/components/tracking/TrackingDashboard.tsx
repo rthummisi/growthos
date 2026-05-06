@@ -123,10 +123,17 @@ export function TrackingDashboard({
               metrics.find(
                 (metric) =>
                   metric.channelSlug === (selectedChannel ?? metric.channelSlug) &&
-                  (metric.channelSlug === "youtube-shorts" || metric.channelSlug === "instagram-reels")
+                  (
+                    metric.channelSlug === "youtube-shorts" ||
+                    metric.channelSlug === "instagram-reels" ||
+                    metric.channelSlug === "tiktok"
+                  )
               ) ??
               metrics.find(
-                (metric) => metric.channelSlug === "youtube-shorts" || metric.channelSlug === "instagram-reels"
+                (metric) =>
+                  metric.channelSlug === "youtube-shorts" ||
+                  metric.channelSlug === "instagram-reels" ||
+                  metric.channelSlug === "tiktok"
               );
 
             const raw = focused?.rawData ?? {};
@@ -135,7 +142,7 @@ export function TrackingDashboard({
               ["Avg View", raw.avgViewDuration],
               ["Completion", raw.completionRate],
               ["Shares", raw.shares],
-              ["Saves / Subs", raw.saves ?? raw.subscribersGained]
+              ["Saves / Subs / Likes", raw.saves ?? raw.subscribersGained ?? raw.likes]
             ];
 
             return items.map(([label, value]) => (

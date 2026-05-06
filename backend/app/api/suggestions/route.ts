@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@backend/lib/prisma";
 import { auditMutation, json } from "@backend/lib/api";
 import { publishEvent } from "@backend/lib/events";
+import { AssetGenerationAgent } from "@agents/asset/asset-generation.agent";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -73,11 +74,65 @@ export async function POST(request: NextRequest) {
   await prisma.asset.create({
     data: {
       suggestionId: suggestion.id,
-      type: "post",
+      type: body.type === "short-form-video" ? "video-script" : "post",
       title: suggestion.title,
       content: suggestion.body
     }
-  });
+  }).catch(() => undefined);
+
+  if (
+    body.type === "short-form-video" ||
+    body.channelSlug === "instagram-reels" ||
+    body.channelSlug === "youtube-shorts" ||
+    body.channelSlug === "tiktok"
+  ) {
+    const generated = await new AssetGenerationAgent().run({
+      channelSlug: body.channelSlug as "instagram-reels" | "youtube-shorts" | "tiktok",
+      type: "short-form-video",
+      title: body.title,
+      body: body.body,
+      reasoning: body.reasoning,
+      viralityScore: 70,
+      effortScore: 35,
+      audienceFit: 75,
+      timeToValue: 5
+    });
+
+    await prisma.asset.deleteMany({ where: { suggestionId: suggestion.id } });
+    await prisma.asset.create({
+      data: {
+        suggestionId: suggestion.id,
+        type: generated.type,
+        title: generated.title,
+        content: generated.content
+      }
+    });
+    for (const component of generated.components ?? []) {
+      await prisma.asset.create({
+        data: {
+          suggestionId: suggestion.id,
+          type: component.type,
+          title: component.title,
+          content: component.content
+        }
+      });
+    }
+    for (const variation of generated.variations) {
+      const primary = await prisma.asset.findFirstOrThrow({
+        where: { suggestionId: suggestion.id, type: generated.type },
+        orderBy: { createdAt: "asc" }
+      });
+      await prisma.asset.create({
+        data: {
+          suggestionId: suggestion.id,
+          type: generated.type,
+          title: `${generated.title} variation`,
+          content: variation,
+          variationOf: primary.id
+        }
+      });
+    }
+  }
 
   const pending = await prisma.placementSuggestion.count({
     where: { status: "pending" }

@@ -1,6 +1,7 @@
 import { ExecutionAgent } from "@agents/execution/execution.agent";
 import { executionQueue } from "@backend/lib/queue";
 import { prisma } from "@backend/lib/prisma";
+import type { AssetOutput } from "@shared/types/agent.types";
 
 export async function enqueueExecutionTask(suggestionId: string) {
   const approval = await prisma.approval.findFirst({
@@ -41,7 +42,7 @@ export async function processExecutionTask(input: { taskId: string; suggestionId
     suggestionId: input.suggestionId,
     approvedAsset: {
       suggestionId: input.suggestionId,
-      type: asset.type as "readme" | "post" | "thread" | "template" | "snippet" | "pitch" | "reply",
+      type: asset.type as AssetOutput["type"],
       title: asset.title,
       content: asset.content,
       variations: []

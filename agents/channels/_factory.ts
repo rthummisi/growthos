@@ -43,6 +43,13 @@ const CHANNEL_GUIDES: Record<string, string> = {
   indiehackers: "Write an IndieHackers milestone post. Personal, honest, share real numbers if possible. 200-400 words. What you built, how you launched, what you learned.",
   lobsters: "Write a Lobste.rs link post. Title must be specific and technically accurate. Include tags. Add a comment (50-100 words) explaining technical interest.",
   bluesky: "Write a Bluesky thread. Dev-community tone, technical substance. 4-6 posts, each ≤ 300 chars. Lead with something genuinely interesting, not promotional."
+  ,
+  "instagram-reels":
+    "Write a complete Instagram Reels creative brief. Include: 1-2 sentence hook, 20-35 second spoken script, beat-by-beat visual plan, overlay text ideas, caption, CTA, and why this will stop the scroll quickly.",
+  "youtube-shorts":
+    "Write a complete YouTube Shorts creative brief. Include: title, 20-40 second spoken script, beat-by-beat visual plan, overlay text ideas, description, CTA, and thumbnail/cover frame copy optimized for discovery.",
+  tiktok:
+    "Write a complete TikTok creative brief. Include: opening hook, 15-30 second spoken script, beat-by-beat visual plan, overlay text, caption, CTA, and why the clip will earn rewatches and shares."
 };
 
 export abstract class BaseChannelAgent extends BaseAgent<ChannelAgentInput, ChannelAgentOutput> {

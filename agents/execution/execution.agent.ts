@@ -5,6 +5,10 @@ import { post as postToProductHunt } from "@backend/lib/integrations/producthunt
 import { post as postToReddit } from "@backend/lib/integrations/reddit";
 import { post as postToNewsletter } from "@backend/lib/integrations/newsletter";
 import { post as postToTwitter } from "@backend/lib/integrations/twitter";
+import { publishReel as publishInstagramReel } from "@backend/lib/integrations/instagram-reels";
+import { publishShort as publishYouTubeShort } from "@backend/lib/integrations/youtube-shorts";
+import { publishVideo as publishTikTokVideo } from "@backend/lib/integrations/tiktok";
+import { resolveShortFormMedia } from "@backend/lib/integrations/short-form-media";
 import type { Prisma } from "@prisma/client";
 import type { AssetOutput, ExecutionArtifact } from "@shared/types/agent.types";
 
@@ -48,7 +52,14 @@ export class ExecutionAgent extends BaseAgent<
           }
         });
 
-    const artifacts = await this.executePlacement(suggestion.type, suggestion.title, input.approvedAsset);
+    const artifacts = await this.executePlacement(
+      suggestion.type,
+      suggestion.title,
+      input.approvedAsset,
+      suggestion.channel.slug,
+      suggestion.product.url,
+      suggestion.product.description
+    );
 
     await prisma.executionTask.update({
       where: { id: queuedTask.id },
@@ -68,8 +79,21 @@ export class ExecutionAgent extends BaseAgent<
   private async executePlacement(
     type: string,
     title: string,
-    approvedAsset: AssetOutput
+    approvedAsset: AssetOutput,
+    channelSlug: string,
+    productUrl: string,
+    productDescription: string
   ): Promise<ExecutionArtifact[]> {
+    if (type === "short-form-video") {
+      return this.publishShortFormVideo({
+        title,
+        approvedAsset,
+        channelSlug,
+        productUrl,
+        productDescription
+      });
+    }
+
     switch (type) {
       case "github-repo": {
         const repoName = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -129,5 +153,69 @@ export class ExecutionAgent extends BaseAgent<
         ];
       }
     }
+  }
+
+  private async publishShortFormVideo(input: {
+    title: string;
+    approvedAsset: AssetOutput;
+    channelSlug: string;
+    productUrl: string;
+    productDescription: string;
+  }): Promise<ExecutionArtifact[]> {
+    const media = await resolveShortFormMedia({
+      suggestionId: input.approvedAsset.suggestionId,
+      productUrl: input.productUrl,
+      productDescription: input.productDescription
+    });
+
+    if (input.channelSlug === "youtube-shorts") {
+      const published = await publishYouTubeShort({
+        title: input.title,
+        description: input.approvedAsset.content,
+        filePath: media.filePath
+      });
+      return [
+        { label: "YouTube Short", url: published.url },
+        { label: "Video Id", content: published.id },
+        { label: "Privacy", content: published.privacyStatus },
+        { label: "Media Source", content: media.source }
+      ];
+    }
+
+    if (input.channelSlug === "instagram-reels") {
+      if (!media.publicUrl) {
+        throw new Error(
+          "Instagram Reels publishing requires an HTTPS-accessible video URL. Configure PUBLIC_ASSET_BASE_URL or SHORTFORM_VIDEO_URL."
+        );
+      }
+      const published = await publishInstagramReel({
+        caption: input.approvedAsset.content,
+        videoUrl: media.publicUrl
+      });
+      return [
+        { label: "Instagram Reel", url: published.url },
+        { label: "Media Id", content: published.id },
+        { label: "Media Source", content: media.source }
+      ];
+    }
+
+    if (input.channelSlug === "tiktok") {
+      const published = await publishTikTokVideo({
+        title: input.title,
+        caption: input.approvedAsset.content,
+        filePath: media.filePath
+      });
+      return [
+        { label: "TikTok Upload", url: published.url },
+        { label: "Publish Id", content: published.id },
+        { label: "Privacy", content: published.privacyLevel },
+        { label: "Media Source", content: media.source }
+      ];
+    }
+
+    return [
+      { label: "Prepared Short-Form Script", content: input.approvedAsset.content },
+      { label: "Posting Mode", content: "manual approval-gated handoff" }
+    ];
   }
 }

@@ -17,7 +17,35 @@ export const CHANNELS = [
   "stackoverflow",
   "indiehackers",
   "lobsters",
-  "bluesky"
+  "bluesky",
+  "instagram-reels",
+  "youtube-shorts",
+  "tiktok"
 ] as const;
 
 export type ChannelSlug = (typeof CHANNELS)[number];
+
+export const CHANNEL_LABELS: Record<ChannelSlug, string> = {
+  github: "GitHub",
+  producthunt: "Product Hunt",
+  hackernews: "Hacker News",
+  reddit: "Reddit",
+  twitter: "Twitter/X",
+  discord: "Discord",
+  slack: "Slack",
+  devto: "Dev.to",
+  hashnode: "Hashnode",
+  linkedin: "LinkedIn",
+  newsletter: "Newsletter",
+  "npm-registry": "npm Registry",
+  "awesome-lists": "Awesome Lists",
+  "template-platforms": "Template Platforms",
+  "integration-marketplace": "Integration Marketplace",
+  stackoverflow: "Stack Overflow",
+  indiehackers: "Indie Hackers",
+  lobsters: "Lobsters",
+  bluesky: "Bluesky",
+  "instagram-reels": "Instagram Reels",
+  "youtube-shorts": "YouTube Shorts",
+  tiktok: "TikTok"
+};

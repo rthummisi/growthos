@@ -2,7 +2,12 @@ import { CHANNELS } from "@shared/constants/channels";
 import type { VisibilityResult } from "@shared/types/visibility.types";
 
 export function buildDemoTrendData() {
-  return ["youtube-shorts", "instagram-reels", ...CHANNELS.filter((slug) => slug !== "youtube-shorts" && slug !== "instagram-reels")]
+  return [
+    "youtube-shorts",
+    "instagram-reels",
+    "tiktok",
+    ...CHANNELS.filter((slug) => slug !== "youtube-shorts" && slug !== "instagram-reels" && slug !== "tiktok")
+  ]
     .slice(0, 6)
     .map((slug, index) => ({
     topic: `${slug} conversation trend`,

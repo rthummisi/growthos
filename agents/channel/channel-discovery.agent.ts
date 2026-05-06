@@ -22,7 +22,10 @@ const channelTypes: Record<ChannelSlug, PlacementType[]> = {
   stackoverflow: ["answer-reply", "snippet-library"],
   indiehackers: ["community-post", "blog-article"],
   lobsters: ["community-post", "blog-article"],
-  bluesky: ["community-post", "thread"]
+  bluesky: ["community-post", "thread"],
+  "instagram-reels": ["short-form-video", "community-post"],
+  "youtube-shorts": ["short-form-video", "community-post"],
+  tiktok: ["short-form-video", "community-post"]
 } as unknown as Record<ChannelSlug, PlacementType[]>;
 
 const rowSchema = z.object({
@@ -33,7 +36,7 @@ const rowSchema = z.object({
 
 const SYSTEM_PROMPT = `You are a developer marketing strategist. Given a product profile, score each distribution channel for fit.
 
-The 19 channels and their audiences:
+The 21 channels and their audiences:
 - github: developers discovering tools via repos, stars, READMEs
 - producthunt: makers and early adopters launching/discovering new tools
 - hackernews: technical founders, engineers who value depth and craft
@@ -53,8 +56,11 @@ The 19 channels and their audiences:
 - indiehackers: solo founders and small teams building and launching products
 - lobsters: experienced engineers who value quality and technical depth
 - bluesky: developers migrating from Twitter, dev-focused community
+- instagram-reels: developers and AI-curious builders discovering tools through quick visual demos, workflow clips, and founder-style explainers
+- youtube-shorts: developers and technical buyers discovering new workflows through short tutorial clips, comparisons, and demo-led walkthroughs
+- tiktok: developers, indie hackers, and AI-curious builders discovering tools through fast visual proof, founder takes, and workflow clips
 
-Return a JSON array of 19 objects, one per channel, exactly:
+Return a JSON array of 21 objects, one per channel, exactly:
 [{ "channelSlug": "github", "fitScore": 0-100, "fitReason": "specific reason this product fits or doesn't fit this channel's audience" }]
 
 Rules:
@@ -66,6 +72,33 @@ Rules:
 export class ChannelDiscoveryAgent extends BaseAgent<ProductProfile, ChannelFitScore[]> {
   name = "channel-discovery";
 
+  private fallbackScores(input: ProductProfile): ChannelFitScore[] {
+    const communities = input.targetCommunities.join(" ").toLowerCase();
+    const useCases = input.useCases.join(" ").toLowerCase();
+    return CHANNELS.map((slug) => {
+      const base =
+        slug === "github" ? 92 :
+        slug === "youtube-shorts" ? 86 :
+        slug === "tiktok" ? 84 :
+        slug === "instagram-reels" ? 80 :
+        slug === "hackernews" ? 78 :
+        slug === "reddit" ? 74 :
+        slug === "twitter" ? 72 :
+        slug === "producthunt" ? 70 :
+        58;
+      const modifier =
+        communities.includes(slug.replace(/-/g, " ")) || useCases.includes("demo") || useCases.includes("workflow")
+          ? 6
+          : 0;
+      return {
+        channelSlug: slug,
+        fitScore: Math.min(100, base + modifier),
+        fitReason: `This product has a clear ${slug.replace(/-/g, " ")} angle because it can be demonstrated through a concrete developer workflow.`,
+        suggestedTypes: channelTypes[slug]
+      };
+    }).sort((a, b) => b.fitScore - a.fitScore);
+  }
+
   async run(input: ProductProfile) {
     const userPrompt = `Product profile:
 ICP: ${input.icp}
@@ -75,28 +108,36 @@ Why devs share: ${input.whyDevsShare}
 Technical surface: ${input.technicalSurface.join(", ")}
 Target communities: ${input.targetCommunities.join(", ")}
 
-Score all 19 channels for this product.`;
+Score all 21 channels for this product.`;
 
-    const raw = await this.callClaude(SYSTEM_PROMPT, userPrompt);
-    const jsonMatch = raw.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) throw new Error("ChannelDiscoveryAgent: no JSON array in Claude response");
+    try {
+      const raw = await this.callClaude(SYSTEM_PROMPT, userPrompt);
+      const jsonMatch = raw.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) {
+        return this.fallbackScores(input);
+      }
 
-    const rows = JSON.parse(jsonMatch[0]) as unknown[];
+      const rows = JSON.parse(jsonMatch[0]) as unknown[];
 
-    return rows
-      .map((row) => {
-        const parsed = rowSchema.safeParse(row);
-        if (!parsed.success) return null;
-        const slug = parsed.data.channelSlug as ChannelSlug;
-        if (!CHANNELS.includes(slug)) return null;
-        return {
-          channelSlug: slug,
-          fitScore: parsed.data.fitScore,
-          fitReason: parsed.data.fitReason,
-          suggestedTypes: channelTypes[slug]
-        };
-      })
-      .filter((item): item is ChannelFitScore => item !== null)
-      .sort((a, b) => b.fitScore - a.fitScore);
+      const parsedRows = rows
+        .map((row) => {
+          const parsed = rowSchema.safeParse(row);
+          if (!parsed.success) return null;
+          const slug = parsed.data.channelSlug as ChannelSlug;
+          if (!CHANNELS.includes(slug)) return null;
+          return {
+            channelSlug: slug,
+            fitScore: parsed.data.fitScore,
+            fitReason: parsed.data.fitReason,
+            suggestedTypes: channelTypes[slug]
+          };
+        })
+        .filter((item): item is ChannelFitScore => item !== null)
+        .sort((a, b) => b.fitScore - a.fitScore);
+
+      return parsedRows.length > 0 ? parsedRows : this.fallbackScores(input);
+    } catch {
+      return this.fallbackScores(input);
+    }
   }
 }

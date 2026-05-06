@@ -9,6 +9,9 @@ import * as hashnode from "@backend/lib/integrations/hashnode";
 import * as linkedin from "@backend/lib/integrations/linkedin";
 import * as newsletter from "@backend/lib/integrations/newsletter";
 import * as stackoverflow from "@backend/lib/integrations/stackoverflow";
+import * as instagramReels from "@backend/lib/integrations/instagram-reels";
+import * as youtubeShorts from "@backend/lib/integrations/youtube-shorts";
+import * as tiktok from "@backend/lib/integrations/tiktok";
 
 function sumMetrics(values: Record<string, unknown>) {
   return Object.values(values).reduce<number>((sum, value) => {
@@ -68,6 +71,30 @@ export async function fetchChannelMetricSnapshot(
     case "stackoverflow": {
       const metrics = await stackoverflow.fetchMetrics(entityId);
       return { metricKey: "answer", metricValue: sumMetrics(metrics), rawData: metrics };
+    }
+    case "instagram-reels": {
+      const metrics = await instagramReels.fetchMetrics(entityId);
+      return {
+        metricKey: "short-form-video",
+        metricValue: metrics.views + metrics.shares + metrics.saves + metrics.followersGained * 10,
+        rawData: metrics
+      };
+    }
+    case "youtube-shorts": {
+      const metrics = await youtubeShorts.fetchMetrics(entityId);
+      return {
+        metricKey: "short-form-video",
+        metricValue: metrics.views + metrics.shares + metrics.subscribersGained * 10,
+        rawData: metrics
+      };
+    }
+    case "tiktok": {
+      const metrics = await tiktok.fetchMetrics(entityId);
+      return {
+        metricKey: "short-form-video",
+        metricValue: metrics.views + metrics.shares + metrics.likes * 2 + metrics.comments * 3,
+        rawData: metrics
+      };
     }
     default: {
       return {
