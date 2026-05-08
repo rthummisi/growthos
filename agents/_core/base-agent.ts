@@ -5,16 +5,23 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY
 });
 
+let anthropicUnavailable = false;
+
 export abstract class BaseAgent<TInput, TOutput> {
   abstract name: string;
   abstract run(input: TInput): Promise<TOutput>;
 
   protected async callClaude(systemPrompt: string, userPrompt: string, maxTokens = 4_000): Promise<string> {
-    if (!process.env.ANTHROPIC_API_KEY) {
+    if (!process.env.ANTHROPIC_API_KEY || anthropicUnavailable) {
       return userPrompt;
     }
 
-    const useCache = systemPrompt.length > 1000;
+    // Always mark system prompt cacheable; Anthropic skips the cache if below
+    // the minimum token threshold so there's no cost to always opting in.
+    const userContent: Anthropic.MessageParam["content"] =
+      userPrompt.length > 2_000
+        ? [{ type: "text", text: userPrompt, cache_control: { type: "ephemeral" } }]
+        : userPrompt;
 
     let attempt = 0;
     let lastError: unknown;
@@ -23,14 +30,22 @@ export abstract class BaseAgent<TInput, TOutput> {
         const response = await anthropic.messages.create({
           model: "claude-sonnet-4-6",
           max_tokens: maxTokens,
-          system: useCache
-            ? [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }]
-            : systemPrompt,
-          messages: [{ role: "user", content: userPrompt }]
+          system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
+          messages: [{ role: "user", content: userContent }]
         });
         const textBlock = response.content.find((block) => block.type === "text");
         return textBlock?.type === "text" ? textBlock.text : "";
       } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const status = typeof error === "object" && error !== null && "status" in error ? (error as { status?: number }).status : undefined;
+        if (
+          status === 400 ||
+          message.toLowerCase().includes("credit balance is too low") ||
+          message.toLowerCase().includes("invalid_request_error")
+        ) {
+          anthropicUnavailable = true;
+          return userPrompt;
+        }
         lastError = error;
         attempt += 1;
         await new Promise((resolve) => setTimeout(resolve, 250 * 2 ** attempt));
