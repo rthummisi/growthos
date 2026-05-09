@@ -28,7 +28,14 @@ export function AssetEditor({
   return (
     <Card>
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Asset Studio</h2>
+        <div>
+          <h2 className="text-lg font-semibold">Asset Studio</h2>
+          {activeAsset ? (
+            <div className="mt-1 text-xs uppercase tracking-[0.2em] text-zinc-500">
+              {activeAsset.type.replace(/-/g, " ")} · {activeAsset.title}
+            </div>
+          ) : null}
+        </div>
         <div className="flex items-center gap-3">
           {status ? <span className="text-sm text-emerald-400">{status}</span> : null}
           <Button disabled={!activeAsset} onClick={() => void navigator.clipboard.writeText(content)}>
@@ -61,6 +68,9 @@ export function AssetEditor({
         onChange={(event) => setContent(event.target.value)}
         placeholder="Select or generate an asset to begin editing."
       />
+      {activeAsset?.variationOf ? (
+        <div className="mt-3 text-xs text-zinc-500">This asset is a variation of the primary {activeAsset.type.replace(/-/g, " ")}.</div>
+      ) : null}
     </Card>
   );
 }

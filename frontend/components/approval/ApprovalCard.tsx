@@ -15,7 +15,7 @@ interface ApprovalCardProps {
   type: string;
   title: string;
   reasoning: string;
-  assets: string[];
+  assets: Array<{ id: string; title: string; type: string; content: string }>;
   selected: boolean;
   onToggleSelected: () => void;
   onResolved: () => void;
@@ -36,7 +36,7 @@ export function ApprovalCard({
   const [showModify, setShowModify] = useState(false);
   const [assetIndex, setAssetIndex] = useState(0);
   const totalAssets = Math.max(assets.length, 1);
-  const currentAsset = assets[assetIndex] ?? assets[0] ?? title;
+  const currentAsset = assets[assetIndex] ?? assets[0] ?? { id: "preview", title, type, content: title };
 
   const decide = async (decision: "approved" | "rejected" | "deferred") => {
     await apiPost("/approvals", { suggestionId, decision });
@@ -65,7 +65,7 @@ export function ApprovalCard({
         {showModify ? (
           <ModifyApprovalForm
             suggestionId={suggestionId}
-            initialBody={currentAsset}
+            initialBody={currentAsset.content}
             onSaved={() => {
               setStatus("approved");
               setShowModify(false);
@@ -80,7 +80,13 @@ export function ApprovalCard({
           <Button variant="reject" onClick={() => void decide("rejected")}>Reject</Button>
         </div>
       </div>
-      <pre className="overflow-auto rounded-xl bg-zinc-950 p-4 font-mono text-xs text-zinc-300">{currentAsset}</pre>
+      <div className="space-y-3 rounded-xl bg-zinc-950 p-4">
+        <div className="flex items-center justify-between text-xs uppercase tracking-[0.2em] text-zinc-500">
+          <span>{currentAsset.type.replace(/-/g, " ")}</span>
+          <span>{currentAsset.title}</span>
+        </div>
+        <pre className="overflow-auto font-mono text-xs text-zinc-300">{currentAsset.content}</pre>
+      </div>
     </Card>
   );
 }

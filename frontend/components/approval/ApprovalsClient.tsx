@@ -11,7 +11,7 @@ interface SuggestionRow {
   title: string;
   reasoning: string;
   channel: { name: string };
-  assets: Array<{ content: string }>;
+  assets: Array<{ id: string; title: string; type: string; content: string }>;
 }
 
 export function ApprovalsClient({ initialSuggestions }: { initialSuggestions: SuggestionRow[] }) {
@@ -59,7 +59,7 @@ export function ApprovalsClient({ initialSuggestions }: { initialSuggestions: Su
             type={suggestion.type}
             title={suggestion.title}
             reasoning={suggestion.reasoning}
-            assets={suggestion.assets.map((asset) => asset.content)}
+            assets={suggestion.assets}
             selected={selectedSet.has(suggestion.id)}
             onToggleSelected={() => toggleSelection(suggestion.id)}
             onResolved={() => {

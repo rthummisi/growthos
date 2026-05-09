@@ -1,7 +1,10 @@
 import { prisma } from "@backend/lib/prisma";
-import { CHANNELS } from "@shared/constants/channels";
+import { CHANNELS, CHANNEL_LABELS } from "@shared/constants/channels";
 
 function titleCase(slug: string) {
+  if (slug in CHANNEL_LABELS) {
+    return CHANNEL_LABELS[slug as keyof typeof CHANNEL_LABELS];
+  }
   return slug
     .split("-")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))

@@ -7,7 +7,7 @@ interface SuggestionRow {
   title: string;
   reasoning: string;
   channel: { name: string };
-  assets: Array<{ content: string }>;
+  assets: Array<{ id: string; title: string; type: string; content: string }>;
 }
 
 export default async function ApprovalsPage() {

@@ -4,6 +4,7 @@ export type PlacementType =
   | "github-repo"
   | "starter-template"
   | "demo-sandbox"
+  | "short-form-video"
   | "try-it-yourself"
   | "sdk-example"
   | "blog-article"
@@ -23,7 +24,13 @@ export type AssetType =
   | "template"
   | "snippet"
   | "pitch"
-  | "reply";
+  | "reply"
+  | "video-script"
+  | "storyboard"
+  | "shot-list"
+  | "caption-track"
+  | "hook-set"
+  | "thumbnail-copy";
 
 export interface ProductProfile {
   productId: string;
@@ -61,6 +68,12 @@ export interface AssetOutput {
   title: string;
   content: string;
   variations: string[];
+  components?: Array<{
+    type: AssetType;
+    title: string;
+    content: string;
+  }>;
+  metricsFocus?: string[];
 }
 
 export interface ExecutionArtifact {

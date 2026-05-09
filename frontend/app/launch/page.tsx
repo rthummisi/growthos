@@ -33,6 +33,9 @@ export default async function LaunchPage({
               ? `No approved placements yet. ${pending.total} items are still waiting in approvals.`
               : "Generate suggestions first."}
         </p>
+        <p className="mt-2 text-sm text-zinc-500">
+          GrowthOS only sequences approved placements here, then turns them into concrete launch windows you can save to the calendar.
+        </p>
       </Card>
       <LaunchTimeline
         items={approved.suggestions.map((suggestion) => ({

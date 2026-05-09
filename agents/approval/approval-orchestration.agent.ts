@@ -52,6 +52,16 @@ export class ApprovalOrchestrationAgent extends BaseAgent<
             content: asset.content
           }
         });
+        for (const component of asset.components ?? []) {
+          await prisma.asset.create({
+            data: {
+              suggestionId: created.id,
+              type: component.type,
+              title: component.title,
+              content: component.content
+            }
+          });
+        }
         for (const variation of asset.variations) {
           await prisma.asset.create({
             data: {

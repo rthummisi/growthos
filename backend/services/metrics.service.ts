@@ -28,7 +28,8 @@ export async function fetchChannelMetrics(productId: string, channelSlug?: strin
     metricKey: metric.metricKey,
     metricValue: metric.metricValue,
     effectivenessScore: normalizeMetric(metric.metricValue, maxValue),
-    fetchedAt: metric.fetchedAt.toISOString()
+    fetchedAt: metric.fetchedAt.toISOString(),
+    rawData: metric.rawData
   }));
 }
 

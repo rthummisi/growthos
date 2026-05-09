@@ -26,8 +26,9 @@ export default async function AssetsPage({
         <div className="space-y-2 text-sm text-zinc-300">
           {assets.length === 0 ? <div className="text-zinc-400">No assets available.</div> : null}
           {assets.map((asset) => (
-            <div key={asset.id}>
-              {asset.title}
+            <div key={asset.id} className="rounded-lg border border-zinc-800 px-3 py-2">
+              <div>{asset.title}</div>
+              <div className="mt-1 text-[11px] uppercase tracking-[0.2em] text-zinc-500">{asset.type.replace(/-/g, " ")}</div>
               {asset.variationOf ? <span className="ml-2 text-xs text-zinc-500">variation</span> : null}
             </div>
           ))}
