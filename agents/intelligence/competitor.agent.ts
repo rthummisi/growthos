@@ -2,7 +2,11 @@ import { z } from "zod";
 import { CHANNELS } from "@shared/constants/channels";
 import { BaseAgent } from "@agents/_core/base-agent";
 import { firecrawlScrape } from "@agents/_core/scraper";
+import { storeKnowledge, retrieveRelevant } from "@backend/lib/rag";
 import type { ProductProfile } from "@shared/types/agent.types";
+
+/** How long (ms) a cached competitor crawl is considered fresh (24 hours). */
+const CACHE_TTL_MS = 24 * 60 * 60 * 1_000;
 
 interface CompetitorPresence {
   name: string;
@@ -186,12 +190,49 @@ Identify 3-5 real direct competitors in this space.`;
       return null;
     }
 
-    // Phase 2: scrape competitor homepages in parallel
+    // Phase 2: scrape competitor homepages in parallel — use RAG cache when fresh
     const scraped = await Promise.all(
-      competitors.map(async (c) => ({
-        ...c,
-        content: await firecrawlScrape(c.url)
-      }))
+      competitors.map(async (c) => {
+        // Check whether we have a fresh cached crawl for this URL.
+        const cached = await retrieveRelevant({
+          query: c.url,
+          chunkType: "competitor_intel"
+        });
+
+        const freshCached = cached.find((chunk) => {
+          // Each stored chunk is a JSON string with { content, crawledAt, sourceUrl }.
+          try {
+            const parsed = JSON.parse(chunk) as { crawledAt?: string; sourceUrl?: string };
+            if (parsed.sourceUrl !== c.url) return false;
+            if (!parsed.crawledAt) return false;
+            return Date.now() - new Date(parsed.crawledAt).getTime() < CACHE_TTL_MS;
+          } catch {
+            return false;
+          }
+        });
+
+        if (freshCached) {
+          try {
+            const parsed = JSON.parse(freshCached) as { content: string };
+            return { ...c, content: parsed.content };
+          } catch {
+            // Fall through to live scrape
+          }
+        }
+
+        // No fresh cache — scrape live and store result for future runs.
+        const content = await firecrawlScrape(c.url);
+        if (content) {
+          const payload = JSON.stringify({ content, crawledAt: new Date().toISOString(), sourceUrl: c.url });
+          void storeKnowledge({
+            chunkType: "competitor_intel",
+            sourceUrl: c.url,
+            content: payload,
+            metadata: { name: c.name, crawledAt: new Date().toISOString() }
+          });
+        }
+        return { ...c, content };
+      })
     );
 
     // Phase 3: analyze channel presence from real content

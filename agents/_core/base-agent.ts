@@ -11,9 +11,51 @@ export abstract class BaseAgent<TInput, TOutput> {
   abstract name: string;
   abstract run(input: TInput): Promise<TOutput>;
 
+  /**
+   * Calls a local Ollama instance (default: gemma3:4b) using the OpenAI-compatible
+   * /v1/chat/completions endpoint.
+   *
+   * Returns an empty string when:
+   * - OLLAMA_BASE_URL is not set and we are not in development mode
+   * - The request fails for any reason
+   *
+   * This makes it safe to use as a no-cost fallback — callers can check for
+   * an empty string and fall back to Claude or a static default.
+   */
+  protected async callOllama(systemPrompt: string, userPrompt: string, maxTokens = 4_000): Promise<string> {
+    const baseUrl = process.env.OLLAMA_BASE_URL ?? "http://localhost:11434/v1";
+    const model = process.env.OLLAMA_MODEL ?? "gemma3:4b";
+
+    // Only run in development unless OLLAMA_BASE_URL is explicitly configured.
+    if (!process.env.OLLAMA_BASE_URL && process.env.NODE_ENV !== "development") return "";
+
+    try {
+      const res = await fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer ollama" },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt }
+          ],
+          max_tokens: maxTokens
+        }),
+        signal: AbortSignal.timeout(120_000)
+      });
+      if (!res.ok) return "";
+      const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+      return data.choices?.[0]?.message?.content ?? "";
+    } catch {
+      return "";
+    }
+  }
+
   protected async callClaude(systemPrompt: string, userPrompt: string, maxTokens = 4_000): Promise<string> {
     if (!process.env.ANTHROPIC_API_KEY || anthropicUnavailable) {
-      return userPrompt;
+      // No Anthropic key or known unavailable — try Ollama before giving up.
+      const ollamaResult = await this.callOllama(systemPrompt, userPrompt, maxTokens);
+      return ollamaResult || userPrompt;
     }
 
     // Always mark system prompt cacheable; Anthropic skips the cache if below
@@ -34,7 +76,15 @@ export abstract class BaseAgent<TInput, TOutput> {
           messages: [{ role: "user", content: userContent }]
         });
         const textBlock = response.content.find((block) => block.type === "text");
-        return textBlock?.type === "text" ? textBlock.text : "";
+        const claudeResult = textBlock?.type === "text" ? textBlock.text : "";
+
+        // If Claude returned empty content (unexpected), try Ollama as a fallback.
+        if (!claudeResult) {
+          const ollamaResult = await this.callOllama(systemPrompt, userPrompt, maxTokens);
+          return ollamaResult || "";
+        }
+
+        return claudeResult;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const status = typeof error === "object" && error !== null && "status" in error ? (error as { status?: number }).status : undefined;
@@ -44,7 +94,9 @@ export abstract class BaseAgent<TInput, TOutput> {
           message.toLowerCase().includes("invalid_request_error")
         ) {
           anthropicUnavailable = true;
-          return userPrompt;
+          // Credit exhausted — fall back to Ollama immediately.
+          const ollamaResult = await this.callOllama(systemPrompt, userPrompt, maxTokens);
+          return ollamaResult || userPrompt;
         }
         lastError = error;
         attempt += 1;

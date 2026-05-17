@@ -248,3 +248,17 @@ model BrandVisibilitySnapshot {
 
   @@index([productId, snapshotAt])
 }
+
+model KnowledgeEmbedding {
+  id          String   @id @default(cuid())
+  productId   String?
+  tenantId    String?
+  content     String
+  chunkType   String
+  sourceUrl   String?
+  channelSlug String?
+  metadata    Json     @default("{}")
+  createdAt   DateTime @default(now())
+
+  @@index([productId, chunkType])
+}

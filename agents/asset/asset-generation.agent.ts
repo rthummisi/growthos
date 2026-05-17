@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { BaseAgent } from "@agents/_core/base-agent";
+import { storeKnowledge, retrieveRelevant } from "@backend/lib/rag";
 import type { AssetOutput, AssetType, PlacementSuggestionOutput } from "@shared/types/agent.types";
 
 const schema = z.object({
@@ -165,12 +166,29 @@ Try the product, collect feedback, and route the winning version into the next c
 
     const assetType = inferAssetType(input.type);
 
+    // Retrieve similar past assets to guide generation (fire-and-forget safe — we await here
+    // because the result enriches the prompt, but errors are swallowed).
+    let pastExamplesBlock = "";
+    try {
+      const pastAssets = await retrieveRelevant({
+        query: input.title,
+        chunkType: "generated_asset",
+        channelSlug: input.channelSlug,
+        limit: 3
+      });
+      if (pastAssets.length > 0) {
+        pastExamplesBlock = `\n\nPast approved assets for this channel (use as style reference, not copy):\n${pastAssets.map((a, i) => `--- Example ${i + 1} ---\n${a}`).join("\n\n")}`;
+      }
+    } catch {
+      // Retrieval failure is non-critical — continue without examples.
+    }
+
     const userPrompt = `Placement type: ${input.type}
 Channel: ${input.channelSlug}
 Title: ${input.title}
 Body / strategy: ${input.body}
 Reasoning: ${input.reasoning}
-Virality score: ${input.viralityScore}
+Virality score: ${input.viralityScore}${pastExamplesBlock}
 
 Generate the complete primary asset and 3 unique variations for this placement.`;
 
@@ -183,13 +201,28 @@ Generate the complete primary asset and 3 unique variations for this placement.`
 
       const parsed = this.jsonFromText(jsonMatch[0], schema);
 
-      return {
+      const result: AssetOutput = {
         suggestionId: "",
         type: (parsed.type as AssetType) ?? assetType,
         title: parsed.title,
         content: parsed.content,
         variations: parsed.variations
       };
+
+      // Store the generated asset for future retrieval — fire-and-forget.
+      void storeKnowledge({
+        chunkType: "generated_asset",
+        channelSlug: input.channelSlug,
+        content: `${parsed.title}\n\n${parsed.content}`,
+        metadata: {
+          type: result.type,
+          channelSlug: input.channelSlug,
+          viralityScore: input.viralityScore,
+          generatedAt: new Date().toISOString()
+        }
+      });
+
+      return result;
     } catch {
       return this.fallbackAsset(input, assetType);
     }
